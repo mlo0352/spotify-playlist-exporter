@@ -208,6 +208,7 @@
           <label class="label">Spotify Client ID</label>
           <input id="cfgClientId" class="input" placeholder="e.g., 123abc…" />
           <div class="help">Client ID is public. Do not use a client secret in a static site.</div>
+          <div id="cfgInjectedBadge" class="help hidden">Client ID provided by deployment config.</div>
         </div>
 
         <div class="field">
@@ -237,6 +238,10 @@
             <span>Store token only for this tab (sessionStorage)</span>
           </label>
           <div class="help">Default stores in localStorage to avoid re-login. Toggle for more privacy.</div>
+          <div class="fieldRow" style="margin-top:10px">
+            <button id="btnResetLocalSettings" class="btn btnSecondary" type="button">Reset local settings</button>
+            <span class="small mutedLine">Clears only this app’s stored keys and reloads.</span>
+          </div>
         </div>
       </div>
 
@@ -378,10 +383,10 @@
   <!-- JSZip from CDN (used for ZIP download) -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <!-- Optional env injection (local env.js or Pages-generated env.js) -->
-  <script src="./env.js"></script>
+  <!-- Deploy-time config injection (GitHub Pages) -->
+  <script src="./app/config.generated.js"></script>
 
-  <!-- Your app entry (must be after env.js) -->
+  <!-- Your app entry (must be after config.generated.js) -->
   <script type="module" src="./app/main.js"></script>
 </body>
 </html>

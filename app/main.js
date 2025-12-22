@@ -15,17 +15,23 @@ import { computePlaylistPersona } from "./persona.js";
 let cfg = loadConfig();
 
 // After you load cfg from storage / defaults...
-const injected = window.__ENV__ || null;
+const injected = window.__SPOTIFY_EXPORTER_CONFIG__ || {};
 
-if (injected) {
+function isUnset(v){
+  return v === null || v === undefined || String(v).trim() === "";
+}
+
+function applyInjectedConfig(){
   // Only fill missing values; never overwrite user-set values
-  if (!cfg.clientId && injected.SPOTIFY_CLIENT_ID) {
-    cfg.clientId = injected.SPOTIFY_CLIENT_ID;
+  if (isUnset(cfg.clientId) && !isUnset(injected.spotifyClientId)){
+    cfg.clientId = String(injected.spotifyClientId).trim();
   }
-  if (!cfg.redirectUri && injected.REDIRECT_URI) {
-    cfg.redirectUri = injected.REDIRECT_URI;
+  if (isUnset(cfg.redirectUri) && !isUnset(injected.redirectUri)){
+    cfg.redirectUri = String(injected.redirectUri).trim();
   }
 }
+
+applyInjectedConfig();
 let token = loadToken(cfg);
 
 const state = {
@@ -62,7 +68,9 @@ const els = {
   privacyToken: document.querySelector("#privacyToken"),
   privacyStorage: document.querySelector("#privacyStorage"),
   btnClearLocal: document.querySelector("#btnClearLocal"),
+  btnResetLocalSettings: document.querySelector("#btnResetLocalSettings"),
   cfgClientId: document.querySelector("#cfgClientId"),
+  cfgInjectedBadge: document.querySelector("#cfgInjectedBadge"),
   cfgRedirectUri: document.querySelector("#cfgRedirectUri"),
   cfgPrefix: document.querySelector("#cfgPrefix"),
   cfgDedupe: document.querySelector("#cfgDedupe"),
@@ -176,6 +184,13 @@ function wireUi(){
     window.location.reload();
   });
 
+  els.btnResetLocalSettings?.addEventListener("click", () => {
+    const ok = confirm("Reset this app’s local settings and reload?");
+    if (!ok) return;
+    clearAllLocalData();
+    window.location.reload();
+  });
+
   els.btnLogout.addEventListener("click", () => {
     clearToken(cfg);
     token = null;
@@ -201,6 +216,7 @@ function wireUi(){
     cfg.exportPrefix = els.cfgPrefix.value.trim() || "spotify-export";
     cfg.dedupeRule = els.cfgDedupe.value;
     cfg.tokenStorage = els.cfgUseSessionStorage.checked ? "session" : "local";
+    applyInjectedConfig();
     saveConfig(cfg);
 
     // token storage changed: migrate token
@@ -373,6 +389,11 @@ function hydrateSettingsModal(){
   els.cfgPrefix.value = cfg.exportPrefix || "spotify-export";
   els.cfgDedupe.value = cfg.dedupeRule || "track_id";
   els.cfgUseSessionStorage.checked = cfg.tokenStorage === "session";
+
+  const hasInjectedClientId = !isUnset(injected.spotifyClientId);
+  if (els.cfgInjectedBadge){
+    els.cfgInjectedBadge.classList.toggle("hidden", !hasInjectedClientId);
+  }
 }
 
 function guessRedirectUri(){

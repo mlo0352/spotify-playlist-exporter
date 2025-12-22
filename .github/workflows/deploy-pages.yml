@@ -21,14 +21,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate env.js from GitHub Secrets
+      - name: Generate app/config.generated.js from GitHub Secrets
+        env:
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          REDIRECT_URI: ${{ secrets.REDIRECT_URI }}
         run: |
-          cat > env.js << 'EOF'
-          window.__ENV__ = {
-            SPOTIFY_CLIENT_ID: "${{ secrets.SPOTIFY_CLIENT_ID }}",
-            REDIRECT_URI: "${{ secrets.REDIRECT_URI }}"
-          };
-          EOF
+          python3 - << 'PY'
+          import json, os, pathlib
+
+          client_id = os.environ.get("SPOTIFY_CLIENT_ID", "")
+          redirect_uri = os.environ.get("REDIRECT_URI", "")
+
+          out = pathlib.Path("app") / "config.generated.js"
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(
+              "window.__SPOTIFY_EXPORTER_CONFIG__ = " + json.dumps(
+                  {"spotifyClientId": client_id, "redirectUri": redirect_uri},
+                  separators=(",", ":"),
+              ) + ";\n",
+              encoding="utf-8",
+          )
+          PY
+          echo "Generated config.generated.js (clientId length: ${#SPOTIFY_CLIENT_ID})"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
