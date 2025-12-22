@@ -1,0 +1,9 @@
+# local-only env (do not commit)
+env.js
+
+# common junk
+.DS_Store
+node_modules
+dist
+.cache
+agents.md

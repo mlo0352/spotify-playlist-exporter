@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spotify Playlist Exporter</title>
+  <meta name="description" content="Export your Spotify playlists + Liked Songs to CSV/JSON with fun analytics." />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="bgGlow"></div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">◎</div>
+      <div class="brandText">
+        <div class="brandTitle">Spotify Playlist Exporter</div>
+        <div class="brandSub">CSV / JSON • metrics • neon fun</div>
+      </div>
+    </div>
+
+    <div class="topActions">
+      <button id="btnSettings" class="btn btnGhost" type="button" title="Settings">⚙️</button>
+      <button id="btnLogout" class="btn btnGhost hidden" type="button" title="Log out">↩︎</button>
+      <button id="btnConnect" class="btn btnPrimary" type="button">Connect Spotify</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="notice" class="notice hidden"></section>
+
+    <section class="hero">
+      <div class="heroCard">
+        <div class="heroTitle">
+          Export everything you can see — playlists, collaborative lists, and your Liked Songs.
+        </div>
+        <div class="heroBody">
+          This runs entirely in your browser. Nothing is uploaded anywhere.
+          Use it on GitHub Pages + your Cloudflare domain and let anyone export their own account after login.
+        </div>
+        <div class="heroChips">
+          <span class="chip">PKCE OAuth</span>
+          <span class="chip">Per-playlist added_at</span>
+          <span class="chip">ZIP Export</span>
+          <span class="chip">Mobile-first</span>
+          <span class="chip">Flashy stats</span>
+        </div>
+      </div>
+
+      <div class="statGrid">
+        <div class="statCard">
+          <div class="statLabel">Playlists</div>
+          <div class="statValue" id="statPlaylists">—</div>
+          <div class="statHint">Including collaborations</div>
+        </div>
+        <div class="statCard">
+          <div class="statLabel">Liked Songs</div>
+          <div class="statValue" id="statLiked">—</div>
+          <div class="statHint">Saved tracks</div>
+        </div>
+        <div class="statCard">
+          <div class="statLabel">Tracks (Total)</div>
+          <div class="statValue" id="statTotal">—</div>
+          <div class="statHint">Across everything</div>
+        </div>
+        <div class="statCard">
+          <div class="statLabel">Tracks (Unique)</div>
+          <div class="statValue" id="statUnique">—</div>
+          <div class="statHint">De-duped by track.id</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHeader">
+        <div class="panelTitle">Your Library</div>
+        <div class="panelActions">
+          <button id="btnFetch" class="btn btnSecondary" type="button" disabled>Fetch playlists</button>
+          <button id="btnExportAll" class="btn btnPrimary" type="button" disabled>Export everything (ZIP)</button>
+        </div>
+      </div>
+
+      <div class="panelBody">
+        <div class="toolbar">
+          <div class="searchWrap">
+            <input id="playlistSearch" class="input" placeholder="Search playlists…" />
+            <span class="kbdHint">⌘K</span>
+          </div>
+
+          <div class="toggles">
+            <label class="toggle">
+              <input id="toggleIncludeLiked" type="checkbox" checked />
+              <span>Include Liked Songs</span>
+            </label>
+            <label class="toggle">
+              <input id="toggleAlbumExports" type="checkbox" checked />
+              <span>Also export Albums view</span>
+            </label>
+            <label class="toggle">
+              <input id="toggleAudioFeatures" type="checkbox" />
+              <span>Audio features (beta)</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="meCard" class="meCard hidden"></div>
+
+        <div id="playlistList" class="playlistList">
+          <div class="emptyState">
+            <div class="emptyTitle">Connect Spotify to begin</div>
+            <div class="emptyBody">
+              Click <b>Connect Spotify</b>, approve access, then fetch your playlists.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHeader">
+        <div class="panelTitle">Flashy insights</div>
+        <div class="panelActions">
+          <button id="btnRecompute" class="btn btnGhost" type="button" disabled>Recompute</button>
+          <button id="btnOverlap" class="btn btnGhost" type="button" disabled>Overlap heatmap</button>
+          <button id="btnDuplicates" class="btn btnGhost" type="button" disabled>Duplicates</button>
+          <button id="btnCelebrate" class="btn btnGhost" type="button" disabled>Neon confetti ✨</button>
+        </div>
+      </div>
+      <div class="panelBody">
+        <div class="dnaCard" id="dnaCard">
+          <div class="dnaHeader">
+            <div>
+              <div class="dnaTitle">Music DNA fingerprint</div>
+              <div class="dnaSub">Shareable, client-only, and yours.</div>
+            </div>
+            <div class="dnaActions">
+              <button id="btnDnaGenres" class="btn btnGhost" type="button" disabled>Fetch genres</button>
+              <button id="btnDnaCopy" class="btn btnSecondary" type="button" disabled>Copy share link</button>
+              <button id="btnDnaSvg" class="btn btnGhost" type="button" disabled>Download SVG</button>
+              <button id="btnDnaPng" class="btn btnGhost" type="button" disabled>Download PNG</button>
+            </div>
+          </div>
+          <div id="dnaSvgWrap" class="dnaSvgWrap" aria-label="Music DNA fingerprint"></div>
+          <div id="dnaHint" class="dnaHint">Fetch your library to generate your fingerprint.</div>
+        </div>
+
+        <div class="insightsGrid">
+          <div class="insightCard">
+            <div class="insightTitle">Top playlists by size</div>
+            <ol id="insightTopPlaylists" class="insightList"></ol>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">Top artists across everything</div>
+            <ol id="insightTopArtists" class="insightList"></ol>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">Your library vibe</div>
+            <div id="insightVibe" class="vibeBox">-</div>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">Library stats (accessible)</div>
+            <ul id="insightStats" class="insightList"></ul>
+          </div>
+        </div>
+
+        <div class="charts">
+          <div class="chartCard">
+            <div class="chartTitle">Tracks per playlist (Top 10)</div>
+            <canvas id="chartPlaylists" width="800" height="320"></canvas>
+          </div>
+          <div class="chartCard">
+            <div class="chartTitle">Added over time (rough)</div>
+            <canvas id="chartTimeline" width="800" height="320"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="footerLeft">
+        <span class="badge">Runs locally</span>
+        <span class="badge">No server required</span>
+        <span class="badge">GitHub Pages + Cloudflare friendly</span>
+      </div>
+      <div class="footerRight">
+        <a class="link" href="agents.md" target="_blank" rel="noreferrer">agents.md</a>
+        <a class="link" href="https://developer.spotify.com/documentation/web-api" target="_blank" rel="noreferrer">Spotify Web API</a>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Modals -->
+  <dialog id="settingsModal" class="modal">
+    <form method="dialog" class="modalForm">
+      <div class="modalHeader">
+        <div class="modalTitle">Settings</div>
+        <button class="btn btnGhost" value="close" type="submit">✕</button>
+      </div>
+
+      <div class="modalBody">
+        <div class="field">
+          <label class="label">Spotify Client ID</label>
+          <input id="cfgClientId" class="input" placeholder="e.g., 123abc…" />
+          <div class="help">Client ID is public. Do not use a client secret in a static site.</div>
+        </div>
+
+        <div class="field">
+          <label class="label">Redirect URI</label>
+          <input id="cfgRedirectUri" class="input" placeholder="e.g., https://splaylists.arealmiown.com/" />
+          <div class="help">Must match exactly a Redirect URI in the Spotify Developer Dashboard.</div>
+        </div>
+
+        <div class="field">
+          <label class="label">Export filename prefix</label>
+          <input id="cfgPrefix" class="input" placeholder="spotify-export" />
+        </div>
+
+        <div class="field">
+          <label class="label">De-dupe rule</label>
+          <select id="cfgDedupe" class="input">
+            <option value="track_id">Prefer track.id (recommended)</option>
+            <option value="track_uri">Prefer track.uri</option>
+          </select>
+          <div class="help">Used for “Unique tracks total”. Exports always include raw IDs/URIs.</div>
+        </div>
+
+        <div class="field">
+          <label class="label">Advanced</label>
+          <label class="toggle">
+            <input id="cfgUseSessionStorage" type="checkbox" />
+            <span>Store token only for this tab (sessionStorage)</span>
+          </label>
+          <div class="help">Default stores in localStorage to avoid re-login. Toggle for more privacy.</div>
+        </div>
+      </div>
+
+      <div class="modalFooter">
+        <button id="btnSaveSettings" class="btn btnPrimary" value="save" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="artistModal" class="modal modalWide" aria-labelledby="artistModalTitle">
+    <form method="dialog" class="modalForm">
+      <div class="modalHeader">
+        <div class="modalTitle" id="artistModalTitle">Artist details</div>
+        <button class="btn btnGhost" value="close" type="submit" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modalBody">
+        <div class="segmented" role="tablist" aria-label="Artist detail mode">
+          <button id="artistModePlaylists" class="segBtn isActive" type="button" data-mode="playlists" role="tab" aria-selected="true">By playlist</button>
+          <button id="artistModeSongs" class="segBtn" type="button" data-mode="songs" role="tab" aria-selected="false">By song</button>
+        </div>
+
+        <div class="field">
+          <input id="artistModalSearch" class="input" placeholder="Filter playlists or songs…" />
+        </div>
+
+        <div id="artistModalSummary" class="mutedLine">-</div>
+        <div id="artistModalContent" class="modalScroll"></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="overlapModal" class="modal modalWide" aria-labelledby="overlapModalTitle">
+    <form method="dialog" class="modalForm">
+      <div class="modalHeader">
+        <div class="modalTitle" id="overlapModalTitle">Playlist overlap heatmap</div>
+        <button class="btn btnGhost" value="close" type="submit" aria-label="Close">✕</button>
+      </div>
+      <div class="modalBody">
+        <div class="fieldRow">
+          <label class="labelInline" for="overlapTopN">Show top</label>
+          <select id="overlapTopN" class="input inputSmall">
+            <option value="10">10</option>
+            <option value="15">15</option>
+            <option value="20" selected>20</option>
+            <option value="25">25</option>
+            <option value="30">30</option>
+          </select>
+          <span class="small mutedLine">Click a cell to list overlapping tracks.</span>
+        </div>
+
+        <div class="overlapGrid">
+          <canvas id="overlapCanvas" width="900" height="900" aria-label="Overlap heatmap"></canvas>
+          <ol id="overlapLegend" class="legend"></ol>
+        </div>
+
+        <div id="overlapDetail" class="overlapDetail"></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="duplicatesModal" class="modal modalWide" aria-labelledby="duplicatesModalTitle">
+    <form method="dialog" class="modalForm">
+      <div class="modalHeader">
+        <div class="modalTitle" id="duplicatesModalTitle">Duplicates & near-duplicates</div>
+        <button class="btn btnGhost" value="close" type="submit" aria-label="Close">✕</button>
+      </div>
+      <div class="modalBody">
+        <div class="segmented" role="tablist" aria-label="Duplicate mode">
+          <button id="dupeModeExact" class="segBtn isActive" type="button" data-mode="exact" role="tab" aria-selected="true">Exact</button>
+          <button id="dupeModeNear" class="segBtn" type="button" data-mode="near" role="tab" aria-selected="false">Near</button>
+        </div>
+
+        <div class="fieldRow">
+          <input id="dupeSearch" class="input" placeholder="Filter tracks." />
+          <button id="btnDupeCsv" class="btn btnSecondary" type="button" disabled>Download CSV</button>
+        </div>
+
+        <div id="dupeSummary" class="mutedLine">-</div>
+        <div id="dupeList" class="modalScroll"></div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Confetti canvas -->
+  <canvas id="confetti" class="confettiCanvas" width="1" height="1"></canvas>
+
+  <!-- JSZip from CDN (used for ZIP download) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+  <!-- Optional env injection (local env.js or Pages-generated env.js) -->
+  <script src="./env.js"></script>
+
+  <!-- Your app entry (must be after env.js) -->
+  <script type="module" src="./app/main.js"></script>
+</body>
+</html>
