@@ -3,12 +3,14 @@ import { buildAuthUrl, parseAuthCallback, exchangeCodeForToken, clearAuthParamsF
 import { getMe, getAllPlaylists, getAllPlaylistItems, getAllSavedTracks, getAudioFeatures, getArtists } from "./spotifyApi.js";
 import { setNotice, setStats, renderPlaylists, renderMe, renderInsights } from "./ui.js";
 import { fmtInt, downloadBlob, safeFilename, toCsv } from "./utils.js";
+import { SPOTIFY } from "./constants.js";
 import { computeMetrics } from "./metrics.js";
 import { drawBarChart, drawTimeline } from "./charts.js";
 import { popConfetti } from "./confetti.js";
-import { buildZipExport } from "./exporters.js";
+import { buildZipExport, buildOfflineReportHtml } from "./exporters.js";
 import { buildTrackOccurrences, buildArtistIndex, getArtistDetail, buildPlaylistKeySets, computeOverlapMatrix, computeOverlapKeys, findExactDuplicateGroups, findNearDuplicateGroups } from "./insights.js";
 import { computeMusicDna, renderMusicDnaSvg, getMusicDnaFromHash, makeMusicDnaShareUrl } from "./fingerprint.js";
+import { computePlaylistPersona } from "./persona.js";
 
 let cfg = loadConfig();
 
@@ -45,14 +47,21 @@ const els = {
   btnConnect: document.querySelector("#btnConnect"),
   btnLogout: document.querySelector("#btnLogout"),
   btnSettings: document.querySelector("#btnSettings"),
+  btnPrivacy: document.querySelector("#btnPrivacy"),
   btnFetch: document.querySelector("#btnFetch"),
   btnExportAll: document.querySelector("#btnExportAll"),
+  btnOfflineReport: document.querySelector("#btnOfflineReport"),
   btnRecompute: document.querySelector("#btnRecompute"),
   btnCelebrate: document.querySelector("#btnCelebrate"),
   btnOverlap: document.querySelector("#btnOverlap"),
   btnDuplicates: document.querySelector("#btnDuplicates"),
   settingsModal: document.querySelector("#settingsModal"),
+  privacyModal: document.querySelector("#privacyModal"),
   btnSaveSettings: document.querySelector("#btnSaveSettings"),
+  privacyScopes: document.querySelector("#privacyScopes"),
+  privacyToken: document.querySelector("#privacyToken"),
+  privacyStorage: document.querySelector("#privacyStorage"),
+  btnClearLocal: document.querySelector("#btnClearLocal"),
   cfgClientId: document.querySelector("#cfgClientId"),
   cfgRedirectUri: document.querySelector("#cfgRedirectUri"),
   cfgPrefix: document.querySelector("#cfgPrefix"),
@@ -64,6 +73,8 @@ const els = {
   toggleAudioFeatures: document.querySelector("#toggleAudioFeatures"),
   chartPlaylists: document.querySelector("#chartPlaylists"),
   chartTimeline: document.querySelector("#chartTimeline"),
+  timelineSlider: document.querySelector("#timelineSlider"),
+  timelineLabel: document.querySelector("#timelineLabel"),
   confetti: document.querySelector("#confetti"),
 
   artistModal: document.querySelector("#artistModal"),
@@ -96,12 +107,20 @@ const els = {
   btnDupeCsv: document.querySelector("#btnDupeCsv"),
   dupeSummary: document.querySelector("#dupeSummary"),
   dupeList: document.querySelector("#dupeList"),
+
+  personaModal: document.querySelector("#personaModal"),
+  personaModalTitle: document.querySelector("#personaModalTitle"),
+  personaSummary: document.querySelector("#personaSummary"),
+  personaBadges: document.querySelector("#personaBadges"),
+  personaTraits: document.querySelector("#personaTraits"),
 };
 
 const uiState = {
   artist: { key: null, mode: "playlists", q: "" },
   overlap: { playlistIds: [], playlistMeta: [], setsByPlaylistId: null, trackMetaByKey: null, matrix: null, max: 0, selected: null },
   dupes: { mode: "exact", q: "", exact: [], near: [] },
+  timeTravel: { points: [], prefix: [], markerSampledIndex: null, fullIndex: null, sampled: [] },
+  persona: { playlistId: null },
 };
 
 init();
@@ -143,6 +162,18 @@ function wireUi(){
   els.btnSettings.addEventListener("click", () => {
     hydrateSettingsModal();
     els.settingsModal.showModal();
+  });
+
+  els.btnPrivacy?.addEventListener("click", () => {
+    hydratePrivacyModal();
+    els.privacyModal?.showModal();
+  });
+
+  els.btnClearLocal?.addEventListener("click", () => {
+    const ok = confirm("Clear all local data for this app (settings + token) and reload?");
+    if (!ok) return;
+    clearAllLocalData();
+    window.location.reload();
   });
 
   els.btnLogout.addEventListener("click", () => {
@@ -194,6 +225,10 @@ function wireUi(){
     await exportAllZip();
   });
 
+  els.btnOfflineReport?.addEventListener("click", () => {
+    downloadOfflineReport();
+  });
+
   els.btnRecompute.addEventListener("click", () => {
     recomputeAndRenderInsights();
   });
@@ -210,7 +245,7 @@ function wireUi(){
   });
 
   els.playlistSearch.addEventListener("input", () => {
-    renderPlaylists(state.playlists, { onExportOne: exportOnePlaylist, filterText: els.playlistSearch.value });
+    renderPlaylists(state.playlists, { onExportOne: exportOnePlaylist, onPersona: openPersonaModal, filterText: els.playlistSearch.value });
   });
 
   // Cmd/Ctrl+K focuses search
@@ -223,6 +258,12 @@ function wireUi(){
 
   window.addEventListener("resize", () => {
     if (state.metrics) renderCharts(state.metrics);
+  });
+
+  els.timelineSlider?.addEventListener("input", () => {
+    const idx = Number(els.timelineSlider.value || "0");
+    uiState.timeTravel.fullIndex = idx;
+    renderTimeTravel();
   });
 
   els.insightTopArtists?.addEventListener("click", (e) => {
@@ -346,6 +387,7 @@ async function refreshAuthUi(){
 
   els.btnFetch.disabled = !authed;
   els.btnExportAll.disabled = !authed;
+  els.btnOfflineReport.disabled = true;
   els.btnRecompute.disabled = !authed;
   els.btnOverlap.disabled = true;
   els.btnDuplicates.disabled = true;
@@ -392,7 +434,7 @@ async function fetchEverything(){
     const playlists = await getAllPlaylists(t);
     state.playlists = playlists;
 
-    renderPlaylists(state.playlists, { onExportOne: exportOnePlaylist, filterText: els.playlistSearch.value });
+    renderPlaylists(state.playlists, { onExportOne: exportOnePlaylist, onPersona: openPersonaModal, filterText: els.playlistSearch.value });
 
     setNotice("ok", `Found <b>${fmtInt(playlists.length)}</b> playlists. Now fetching tracks…`);
 
@@ -479,6 +521,7 @@ function recomputeAndRenderInsights(){
 
   els.btnOverlap.disabled = false;
   els.btnDuplicates.disabled = false;
+  els.btnOfflineReport.disabled = false;
 }
 
 function recomputeDnaOnly(){
@@ -691,7 +734,139 @@ function renderCharts(metrics){
   // downsample for UI
   const stride = Math.ceil(points.length / 140) || 1;
   const sampled = points.filter((_,i) => i % stride === 0);
-  drawTimeline(els.chartTimeline, sampled);
+  uiState.timeTravel.sampled = sampled;
+  setupTimeTravel(points);
+  drawTimeline(els.chartTimeline, sampled, { markerIndex: uiState.timeTravel.markerSampledIndex });
+}
+
+function setupTimeTravel(points){
+  uiState.timeTravel.points = points || [];
+  uiState.timeTravel.prefix = [];
+
+  let run = 0;
+  for (let i=0;i<uiState.timeTravel.points.length;i++){
+    run += uiState.timeTravel.points[i]?.count || 0;
+    uiState.timeTravel.prefix[i] = run;
+  }
+
+  const max = Math.max(0, uiState.timeTravel.points.length - 1);
+  els.timelineSlider.disabled = max === 0;
+  els.timelineSlider.max = String(max);
+
+  if (uiState.timeTravel.fullIndex === null || uiState.timeTravel.fullIndex === undefined){
+    uiState.timeTravel.fullIndex = max;
+    els.timelineSlider.value = String(max);
+  }else{
+    uiState.timeTravel.fullIndex = Math.min(max, Math.max(0, uiState.timeTravel.fullIndex));
+    els.timelineSlider.value = String(uiState.timeTravel.fullIndex);
+  }
+
+  renderTimeTravel();
+}
+
+function renderTimeTravel(){
+  const points = uiState.timeTravel.points || [];
+  const idx = uiState.timeTravel.fullIndex ?? 0;
+  const p = points[idx] || null;
+  const cumulative = uiState.timeTravel.prefix[idx] || 0;
+
+  if (els.timelineLabel){
+    els.timelineLabel.textContent = p
+      ? `As of ${p.date}: ${fmtInt(cumulative)} added (${fmtInt(p.count)} that day)`
+      : "-";
+  }
+
+  // update marker on chart (map full index to sampled index)
+  const sampled = uiState.timeTravel.sampled || [];
+  const sampleIdx = sampled.length
+    ? Math.round((idx / Math.max(1, points.length - 1)) * (sampled.length - 1))
+    : null;
+  uiState.timeTravel.markerSampledIndex = (sampleIdx === null) ? null : Math.max(0, Math.min(sampled.length - 1, sampleIdx));
+  drawTimeline(els.chartTimeline, sampled, { markerIndex: uiState.timeTravel.markerSampledIndex });
+}
+
+function hydratePrivacyModal(){
+  if (els.privacyScopes){
+    els.privacyScopes.innerHTML = (SPOTIFY.scopes || []).map(s => `<li><b>${escapeHtml(s)}</b></li>`).join("");
+  }
+
+  if (els.privacyToken){
+    if (!token){
+      els.privacyToken.textContent = "Not connected.";
+    }else{
+      const exp = token.expires_at ? new Date(token.expires_at) : null;
+      const leftMs = token.expires_at ? (token.expires_at - Date.now()) : null;
+      const leftMin = (leftMs === null) ? null : Math.max(0, Math.round(leftMs / 60000));
+      els.privacyToken.textContent = [
+        `access_token present`,
+        exp ? `expires: ${exp.toLocaleString()}` : `expires: unknown`,
+        leftMin !== null ? `(${leftMin} min left)` : "",
+        token.refresh_token ? "refresh_token present" : "no refresh_token",
+      ].filter(Boolean).join("  ");
+    }
+  }
+
+  if (els.privacyStorage){
+    const store = cfg.tokenStorage === "session" ? "sessionStorage" : "localStorage";
+    els.privacyStorage.textContent = `Token stored in ${store}. Settings stored in localStorage.`;
+  }
+}
+
+function clearAllLocalData(){
+  const keys = [
+    "spe_cfg_v1",
+    "spe_token_v1",
+    "spe_pkce_verifier_v1",
+    "spe_oauth_state_v1",
+  ];
+  for (const k of keys){
+    try{ localStorage.removeItem(k); }catch{}
+    try{ sessionStorage.removeItem(k); }catch{}
+  }
+}
+
+function downloadOfflineReport(){
+  if (!state.me || !state.metrics){
+    setNotice("warn", "Fetch playlists first.");
+    return;
+  }
+  const html = buildOfflineReportHtml({ cfg, me: state.me, metrics: state.metrics });
+  const stamp = new Date().toISOString().slice(0,10);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  downloadBlob(`${safeFilename(cfg.exportPrefix || "spotify-export")}-${stamp}-report.html`, blob);
+  setNotice("ok", "Downloaded offline report HTML.");
+}
+
+function openPersonaModal(pl){
+  if (!state.occurrences.length){
+    setNotice("warn", "Fetch playlists first.");
+    return;
+  }
+  uiState.persona.playlistId = pl?.id || null;
+
+  const occ = state.occurrences.filter(o => o.playlist_id === pl.id);
+  const persona = computePlaylistPersona({
+    name: pl.name || "Unknown playlist",
+    occurrences: occ,
+    audioFeaturesByTrackId: state.audioFeaturesByTrackId,
+    artistGenresById: state.artistGenresById,
+    dedupeRule: cfg.dedupeRule,
+  });
+
+  els.personaModalTitle.textContent = `If “${pl.name || "this playlist"}” were a person…`;
+  els.personaSummary.textContent = persona.summary;
+
+  els.personaBadges.innerHTML = (persona.badges || []).map(b => `<span class="pill">${escapeHtml(b)}</span>`).join("");
+  els.personaTraits.innerHTML = (persona.traits || []).map(t => `
+    <div class="rowCard">
+      <div class="rowTop">
+        <div class="rowTitle">${escapeHtml(t.k)}</div>
+        <div class="rowMeta">${escapeHtml(t.v)}</div>
+      </div>
+    </div>
+  `).join("");
+
+  els.personaModal?.showModal();
 }
 
 function openOverlapModal(){
@@ -1044,9 +1219,16 @@ function resetState(){
   state.dna = null;
   state.dnaSvg = "";
   renderMe(null);
-  renderPlaylists([], { onExportOne: () => {}, filterText: "" });
+  renderPlaylists([], { onExportOne: () => {}, onPersona: () => {}, filterText: "" });
   setStats({ playlists: null, likedCount: null, total: null, unique: null });
   renderDnaEmpty();
+  if (els.btnOfflineReport) els.btnOfflineReport.disabled = true;
+  if (els.timelineSlider){
+    els.timelineSlider.disabled = true;
+    els.timelineSlider.max = "0";
+    els.timelineSlider.value = "0";
+  }
+  if (els.timelineLabel) els.timelineLabel.textContent = "-";
 }
 
 function escapeHtml(s){

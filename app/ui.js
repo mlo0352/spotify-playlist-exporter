@@ -39,7 +39,7 @@ export function renderMe(me){
   `;
 }
 
-export function renderPlaylists(playlists, { onExportOne, filterText }){
+export function renderPlaylists(playlists, { onExportOne, onPersona, filterText }){
   const list = document.querySelector("#playlistList");
   const q = (filterText || "").toLowerCase().trim();
 
@@ -82,11 +82,15 @@ export function renderPlaylists(playlists, { onExportOne, filterText }){
       </div>
       <div class="plRight">
         <span class="badge">id: ${escapeHtml(pl.id)}</span>
-        <button class="btn btnGhost">Export</button>
+        <button class="btn btnGhost" type="button" data-action="persona">Persona</button>
+        <button class="btn btnGhost" type="button" data-action="export">Export</button>
       </div>
     `;
-    const btn = row.querySelector("button");
-    btn.addEventListener("click", () => onExportOne(pl));
+    const btnExport = row.querySelector('button[data-action="export"]');
+    btnExport.addEventListener("click", () => onExportOne(pl));
+
+    const btnPersona = row.querySelector('button[data-action="persona"]');
+    btnPersona.addEventListener("click", () => onPersona?.(pl));
     list.appendChild(row);
   }
 }

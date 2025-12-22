@@ -65,7 +65,7 @@ export function drawBarChart(canvas, labels, values){
   }
 }
 
-export function drawTimeline(canvas, points){
+export function drawTimeline(canvas, points, { markerIndex = null } = {}){
   // points: [{date, count}] sorted by date
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
@@ -114,6 +114,28 @@ export function drawTimeline(canvas, points){
     else ctx.lineTo(x,y);
   }
   ctx.stroke();
+
+  // marker
+  if (markerIndex !== null && markerIndex !== undefined && points.length){
+    const i = clamp(markerIndex, 0, points.length-1);
+    const x = left + (i/(points.length-1 || 1)) * plotW;
+    ctx.strokeStyle = "rgba(0,0,0,.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, top + plotH);
+    ctx.stroke();
+
+    const p = points[i];
+    const y = top + (plotH - (p.count/max)*plotH);
+    ctx.fillStyle = "rgba(255,255,255,.98)";
+    ctx.strokeStyle = "rgba(0,163,255,.75)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x,y,6,0,Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+  }
 
   // dots
   for (let i=0;i<points.length;i+= Math.ceil(points.length/22)){

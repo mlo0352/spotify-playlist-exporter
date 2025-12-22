@@ -20,6 +20,7 @@
     </div>
 
     <div class="topActions">
+      <button id="btnPrivacy" class="btn btnGhost" type="button" title="Privacy">Privacy</button>
       <button id="btnSettings" class="btn btnGhost" type="button" title="Settings">⚙️</button>
       <button id="btnLogout" class="btn btnGhost hidden" type="button" title="Log out">↩︎</button>
       <button id="btnConnect" class="btn btnPrimary" type="button">Connect Spotify</button>
@@ -77,6 +78,7 @@
         <div class="panelActions">
           <button id="btnFetch" class="btn btnSecondary" type="button" disabled>Fetch playlists</button>
           <button id="btnExportAll" class="btn btnPrimary" type="button" disabled>Export everything (ZIP)</button>
+          <button id="btnOfflineReport" class="btn btnGhost" type="button" disabled>Download offline report (.html)</button>
         </div>
       </div>
 
@@ -171,6 +173,10 @@
           <div class="chartCard">
             <div class="chartTitle">Added over time (rough)</div>
             <canvas id="chartTimeline" width="800" height="320"></canvas>
+            <div class="chartControls">
+              <input id="timelineSlider" type="range" min="0" max="0" value="0" step="1" disabled aria-label="Time travel slider" />
+              <div id="timelineLabel" class="small mutedLine">-</div>
+            </div>
           </div>
         </div>
       </div>
@@ -240,6 +246,42 @@
     </form>
   </dialog>
 
+  <dialog id="privacyModal" class="modal" aria-labelledby="privacyModalTitle">
+    <form method="dialog" class="modalForm">
+      <div class="modalHeader">
+        <div class="modalTitle" id="privacyModalTitle">Local privacy dashboard</div>
+        <button class="btn btnGhost" value="close" type="submit" aria-label="Close">✕</button>
+      </div>
+      <div class="modalBody">
+        <div class="pillRow">
+          <span class="pill">This app never uploads your data</span>
+          <span class="pill">All calls go directly to Spotify</span>
+          <span class="pill">PKCE (no client secret)</span>
+        </div>
+
+        <div class="field">
+          <div class="label">Scopes used</div>
+          <ul id="privacyScopes" class="insightList"></ul>
+        </div>
+
+        <div class="field">
+          <div class="label">Token status</div>
+          <div id="privacyToken" class="mutedLine">-</div>
+        </div>
+
+        <div class="field">
+          <div class="label">Storage</div>
+          <div id="privacyStorage" class="mutedLine">-</div>
+        </div>
+
+        <div class="fieldRow">
+          <button id="btnClearLocal" class="btn btnSecondary" type="button">Clear all local data</button>
+          <span class="small mutedLine">Logs you out and removes settings from this browser.</span>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="artistModal" class="modal modalWide" aria-labelledby="artistModalTitle">
     <form method="dialog" class="modalForm">
       <div class="modalHeader">
@@ -259,6 +301,21 @@
 
         <div id="artistModalSummary" class="mutedLine">-</div>
         <div id="artistModalContent" class="modalScroll"></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="personaModal" class="modal modalWide" aria-labelledby="personaModalTitle">
+    <form method="dialog" class="modalForm">
+      <div class="modalHeader">
+        <div class="modalTitle" id="personaModalTitle">Playlist persona</div>
+        <button class="btn btnGhost" value="close" type="submit" aria-label="Close">✕</button>
+      </div>
+      <div class="modalBody">
+        <div id="personaSummary" class="mutedLine">-</div>
+        <div id="personaBadges" class="pillRow"></div>
+        <div id="personaTraits" class="modalScroll"></div>
+        <div class="small mutedLine">Rule-based heuristics only. Enable Audio features + Fetch genres for richer results.</div>
       </div>
     </form>
   </dialog>

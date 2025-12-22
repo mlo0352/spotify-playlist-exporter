@@ -76,8 +76,8 @@ export async function buildZipExport({
     }
   }
 
-  // fun report HTML
-  zip.file(`${root}/report.html`, buildReportHtml(cfg, me, metrics));
+  // offline report HTML (self-contained)
+  zip.file(`${root}/report.html`, buildOfflineReportHtml({ cfg, me, metrics }));
 
   return { zip, root };
 }
@@ -220,5 +220,226 @@ function buildReportHtml(cfg, me, metrics){
     <div class="k">Vibe</div>
     <div class="v" style="font-size:18px">${esc(metrics.vibe || "")}</div>
   </div>
+</div></body></html>`;
+}
+
+export function buildOfflineReportHtml({ cfg, me, metrics }){
+  const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+  const payload = { me, metrics, cfg: { exportPrefix: cfg?.exportPrefix || "spotify-export" } };
+  const dataJson = JSON.stringify(payload).replace(/</g, "\\u003c");
+
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Spotify Offline Report</title>
+<style>
+  :root{--bg:#fff;--text:#101217;--muted:#5c6370;--border:#e7eaf0}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:var(--bg);color:var(--text)}
+  .wrap{max-width:1060px;margin:0 auto;padding:22px}
+  .hero{border-radius:18px;padding:16px;background:linear-gradient(135deg, rgba(0,255,213,.18), rgba(255,61,243,.10), rgba(138,92,255,.14)); border:1px solid rgba(0,0,0,.06)}
+  h1{margin:0 0 6px;font-size:22px}
+  .sub{color:rgba(16,18,23,.72);line-height:1.35}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+  @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:12px}
+  .k{font-size:12px;color:rgba(16,18,23,.65)}
+  .v{font-size:22px;font-weight:900;margin-top:6px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+  ol,ul{margin:0;padding-left:18px;line-height:1.55;color:var(--muted)}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  @media(max-width:900px){.charts{grid-template-columns:1fr}}
+  canvas{width:100%;height:260px;display:block}
+  .table{width:100%;border-collapse:collapse;margin-top:8px}
+  .table th,.table td{border-bottom:1px solid rgba(0,0,0,.06);padding:8px 6px;text-align:left;font-size:13px}
+  .table th{font-size:12px;color:rgba(16,18,23,.65)}
+  .pill{display:inline-block;font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;margin-right:6px;margin-top:6px}
+  .muted{color:var(--muted)}
+</style></head>
+<body><div class="wrap">
+  <div class="hero">
+    <h1>Spotify Offline Report</h1>
+    <div class="sub"><b>${esc(me?.display_name || me?.id || "Unknown user")}</b>  generated <span id="gen"></span></div>
+    <div class="sub muted" style="margin-top:6px">Self-contained HTML: no network required to view.</div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="k">Playlists</div><div class="v" id="m_playlists">-</div></div>
+    <div class="card"><div class="k">Liked songs</div><div class="v" id="m_liked">-</div></div>
+    <div class="card"><div class="k">Tracks total</div><div class="v" id="m_total">-</div></div>
+    <div class="card"><div class="k">Tracks unique</div><div class="v" id="m_unique">-</div></div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="k">Quick stats</div>
+    <div>
+      <span class="pill" id="pill_dupes">-</span>
+      <span class="pill" id="pill_unavail">-</span>
+      <span class="pill" id="pill_explicit">-</span>
+      <span class="pill" id="pill_duration">-</span>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="card">
+      <div class="k" style="margin-bottom:8px">Tracks per playlist (Top 12)</div>
+      <canvas id="c_pl"></canvas>
+    </div>
+    <div class="card">
+      <div class="k" style="margin-bottom:8px">Added over time</div>
+      <canvas id="c_tl"></canvas>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <div class="k" style="margin-bottom:8px">Top artists</div>
+      <ol id="top_artists"></ol>
+    </div>
+    <div class="card">
+      <div class="k" style="margin-bottom:8px">Top albums</div>
+      <ol id="top_albums"></ol>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="k">Playlists</div>
+    <table class="table" id="pl_table">
+      <thead><tr><th>Name</th><th>Owner</th><th>Tracks</th><th>Flags</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="k">Vibe</div>
+    <div class="v" style="font-size:18px" id="vibe">-</div>
+  </div>
+
+  <script type="application/json" id="spe_data">${dataJson}</script>
+  <script>
+  (function(){
+    const data = JSON.parse(document.getElementById('spe_data').textContent);
+    const m = data.metrics || {};
+
+    const fmtInt = (n) => (n === null || n === undefined || Number.isNaN(n)) ? '-' : new Intl.NumberFormat().format(n);
+    const fmtPct = (r) => (r === null || r === undefined || Number.isNaN(r)) ? '-' : (Math.round(r*100) + '%');
+    const fmtDur = (ms) => {
+      if (ms === null || ms === undefined || Number.isNaN(ms)) return '-';
+      const s = Math.floor(ms/1000);
+      const h = Math.floor(s/3600);
+      const mm = Math.floor((s%3600)/60);
+      return h>0 ? (h+'h '+mm+'m') : (mm+'m');
+    };
+
+    document.getElementById('gen').textContent = (m.generated_at || '').replace('T',' ').slice(0,19);
+    document.getElementById('m_playlists').textContent = fmtInt(m.playlist_count);
+    document.getElementById('m_liked').textContent = fmtInt(m.liked_count);
+    document.getElementById('m_total').textContent = fmtInt(m.total_tracks);
+    document.getElementById('m_unique').textContent = fmtInt(m.unique_tracks);
+
+    document.getElementById('pill_dupes').textContent = 'Duplicates: ' + fmtInt(m.duplicates_across_sources);
+    document.getElementById('pill_unavail').textContent = 'Unavailable: ' + fmtInt(m.unavailable_tracks);
+    document.getElementById('pill_explicit').textContent = 'Explicit: ' + fmtPct(m.explicit_ratio);
+    document.getElementById('pill_duration').textContent = 'Total duration: ' + fmtDur(m.total_duration_ms);
+
+    const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const topArtists = (m.top_artists || []).slice(0,12).map(a => '<li><b>'+esc(a.name)+'</b> <span style=\"opacity:.7\">('+fmtInt(a.count)+')</span></li>').join('');
+    const topAlbums = (m.top_albums || []).slice(0,12).map(a => '<li><b>'+esc(a.name)+'</b> <span style=\"opacity:.7\">('+fmtInt(a.count)+')</span></li>').join('');
+    document.getElementById('top_artists').innerHTML = topArtists || '<li>-</li>';
+    document.getElementById('top_albums').innerHTML = topAlbums || '<li>-</li>';
+
+    document.getElementById('vibe').textContent = m.vibe || '-';
+
+    const pls = (m.playlists || []).slice().sort((a,b) => (b.track_count||0)-(a.track_count||0));
+    const tbody = document.querySelector('#pl_table tbody');
+    tbody.innerHTML = pls.slice(0, 120).map(p => {
+      const flags = [(p.public ? 'public' : 'private'), (p.collaborative ? 'collab' : '')].filter(Boolean).join('  ');
+      return '<tr><td>'+esc(p.name)+'</td><td class=\"muted\">'+esc(p.owner||'')+'</td><td>'+fmtInt(p.track_count)+'</td><td class=\"muted\">'+esc(flags)+'</td></tr>';
+    }).join('');
+
+    function setupCanvas(canvas){
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth || 800;
+      const h = canvas.clientHeight || 260;
+      canvas.width = Math.floor(w*dpr);
+      canvas.height = Math.floor(h*dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      return { ctx, w, h };
+    }
+
+    function drawBars(canvas, labels, values){
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0,0,w,h);
+      const top = 10, bottom = 26, left = 10, right = 10;
+      const plotW = w-left-right, plotH = h-top-bottom;
+      const max = Math.max(1, ...values);
+      const n = values.length || 1;
+      const gap = 6;
+      const barW = (plotW - gap*(n-1)) / n;
+
+      ctx.strokeStyle = 'rgba(0,0,0,.08)';
+      ctx.beginPath(); ctx.moveTo(left, top+plotH); ctx.lineTo(left+plotW, top+plotH); ctx.stroke();
+
+      for (let i=0;i<n;i++){
+        const v = values[i] || 0;
+        const bh = (v/max)*plotH;
+        const x = left + i*(barW+gap);
+        const y = top + (plotH-bh);
+        const g = ctx.createLinearGradient(x,y,x,y+bh);
+        g.addColorStop(0,'rgba(0,255,213,.85)');
+        g.addColorStop(.55,'rgba(255,61,243,.55)');
+        g.addColorStop(1,'rgba(138,92,255,.72)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x,y,barW,bh);
+
+        ctx.fillStyle = 'rgba(16,18,23,.75)';
+        ctx.font = '11px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+        const label = String(labels[i]||'').slice(0,12);
+        ctx.save();
+        ctx.translate(x + barW/2, top + plotH + 16);
+        ctx.rotate(-0.26);
+        ctx.textAlign='center';
+        ctx.fillText(label, 0, 0);
+        ctx.restore();
+      }
+    }
+
+    function drawTimeline(canvas, points){
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0,0,w,h);
+      const top = 10, bottom = 26, left = 10, right = 10;
+      const plotW = w-left-right, plotH = h-top-bottom;
+      const max = Math.max(1, ...(points.map(p=>p.count||0)));
+
+      ctx.strokeStyle = 'rgba(0,0,0,.08)';
+      ctx.beginPath(); ctx.moveTo(left, top+plotH); ctx.lineTo(left+plotW, top+plotH); ctx.stroke();
+
+      const grad = ctx.createLinearGradient(left, top, left+plotW, top);
+      grad.addColorStop(0,'rgba(0,163,255,.85)');
+      grad.addColorStop(.5,'rgba(255,61,243,.65)');
+      grad.addColorStop(1,'rgba(0,255,213,.85)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2.5;
+
+      ctx.beginPath();
+      for (let i=0;i<points.length;i++){
+        const p = points[i];
+        const x = left + (i/(points.length-1||1))*plotW;
+        const y = top + (plotH - ((p.count||0)/max)*plotH);
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+
+    const topPl = pls.slice(0, 12);
+    drawBars(document.getElementById('c_pl'), topPl.map(p=>p.name), topPl.map(p=>p.track_count||0));
+    const tl = (m.added_timeline || []);
+    const stride = Math.ceil(tl.length / 180) || 1;
+    const sampled = tl.filter((_,i)=> i%stride===0);
+    drawTimeline(document.getElementById('c_tl'), sampled);
+  })();
+  </script>
 </div></body></html>`;
 }

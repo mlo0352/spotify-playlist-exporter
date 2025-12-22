@@ -262,6 +262,7 @@ body{
   border:1px solid var(--border);
   background:#fff;
 }
+.pillRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 
 .playlistList{
   display:grid;
@@ -395,6 +396,18 @@ body{
 }
 @media (max-width: 900px){
   .chartCard canvas{height: 240px}
+}
+.chartControls{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
+.chartControls input[type="range"]{
+  width: 100%;
+  max-width: 460px;
 }
 
 .footer{
