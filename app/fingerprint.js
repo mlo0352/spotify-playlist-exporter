@@ -50,6 +50,12 @@ function avg(nums){
   return nums.reduce((a,b) => a+b, 0) / nums.length;
 }
 
+function round(n, places){
+  if (n === null || n === undefined || Number.isNaN(n)) return null;
+  const p = Math.pow(10, places);
+  return Math.round(n * p) / p;
+}
+
 export function computeMusicDna({ metrics, occurrences, audioFeaturesByTrackId, topGenres }){
   const uniqTrackIds = new Set();
   for (const occ of occurrences){
@@ -69,22 +75,25 @@ export function computeMusicDna({ metrics, occurrences, audioFeaturesByTrackId, 
     }
   }
 
-  return {
+  const base = {
     v: 1,
-    generated_at: new Date().toISOString(),
     total_tracks: metrics.total_tracks,
     unique_tracks: metrics.unique_tracks,
-    explicit_ratio: metrics.explicit_ratio,
-    decades: (metrics.decade_distribution || []).slice(-10),
-    top_genres: (topGenres || []).slice(0, 8),
+    explicit_ratio: round(metrics.explicit_ratio, 4),
+    decades: (metrics.decade_distribution || []).slice(-10).map(d => ({ decade: d.decade, count: d.count })),
+    top_genres: (topGenres || []).slice(0, 8).map(g => ({ genre: g.genre, weight: g.weight })),
     audio: {
       tracks_with_features: audioFeaturesByTrackId ? tempos.length : 0,
-      avg_tempo: avg(tempos),
-      avg_energy: avg(energies),
-      avg_valence: avg(valences),
+      avg_tempo: round(avg(tempos), 1),
+      avg_energy: round(avg(energies), 3),
+      avg_valence: round(avg(valences), 3),
     },
     vibe: metrics.vibe || null,
   };
+
+  // Deterministic seed: derived from stable fields only (no timestamps).
+  const seed = hashString(JSON.stringify(base));
+  return { ...base, seed };
 }
 
 function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
@@ -113,7 +122,7 @@ function seeded(seed){
 }
 
 export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
-  const seed = parseInt(hashString(JSON.stringify(dna)).slice(0, 8), 16) >>> 0;
+  const seed = parseInt(String(dna.seed || hashString(JSON.stringify(dna))).slice(0, 8), 16) >>> 0;
   const rnd = seeded(seed);
 
   const pad = 24;
@@ -126,6 +135,10 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
   const explicit = dna.explicit_ratio ?? null;
   const energy = pct01(dna.audio?.avg_energy ?? null);
   const valence = pct01(dna.audio?.avg_valence ?? null);
+
+  const genresTextRaw = genres.length ? genres.join(" • ") : "No genres yet";
+  const genresText = genresTextRaw.length > 84 ? (genresTextRaw.slice(0, 82) + "…") : genresTextRaw;
+  const sig = String(dna.seed || "").slice(0, 8);
 
   const barcodeX = pad;
   const barcodeY = pad + 170;
@@ -169,11 +182,11 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
   <rect x="8" y="8" width="${width-16}" height="${height-16}" rx="26" fill="url(#g)" opacity=".12"/>
 
   <text x="${pad}" y="${pad+28}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="20" font-weight="900" fill="rgba(10,12,18,.92)">Music DNA</text>
-  <text x="${pad}" y="${pad+50}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="700" fill="rgba(16,18,23,.55)">fingerprint v${dna.v}  •  ${new Date(dna.generated_at).toISOString().slice(0,10)}</text>
+  <text x="${pad}" y="${pad+50}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="700" fill="rgba(16,18,23,.55)">fingerprint v${dna.v}${sig ? ` • ${sig}` : ""} • ${dna.unique_tracks} unique</text>
 
   <g transform="translate(${pad},${pad+74})">
     <text x="0" y="0" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="900" fill="rgba(16,18,23,.65)">Top genres</text>
-    <text x="0" y="20" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="14" font-weight="900" fill="rgba(10,12,18,.92)">${genres.length ? genres.join("  •  ") : "— (fetch genres for this)"} </text>
+    <text x="0" y="20" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="14" font-weight="900" fill="rgba(10,12,18,.92)">${genresText}</text>
   </g>
 
   <g transform="translate(${pad},${pad+110})">
@@ -188,7 +201,7 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
 
   <g transform="translate(${pad+420},${pad+110})">
     <text x="0" y="0" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="900" fill="rgba(16,18,23,.65)">Energy / Mood</text>
-    <text x="0" y="20" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="14" font-weight="900" fill="rgba(10,12,18,.92)">${energy === null ? "—" : `${Math.round(energy*100)}%`} / ${valence === null ? "—" : `${Math.round(valence*100)}%`}</text>
+    <text x="0" y="20" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="14" font-weight="900" fill="rgba(10,12,18,.92)">${energy === null ? "-" : `${Math.round(energy*100)}%`} energy  •  ${valence === null ? "-" : `${Math.round(valence*100)}%`} mood</text>
   </g>
 
   <g transform="translate(${decadeStartX},${decadeBaseY})">

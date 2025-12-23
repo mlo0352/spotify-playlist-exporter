@@ -1,4 +1,4 @@
-import { fmtDate } from "./utils.js";
+import { fmtDate, hashString } from "./utils.js";
 
 /**
  * Build metrics + fun insights from a normalized library shape.
@@ -106,8 +106,20 @@ export function computeMetrics({ playlists, playlistTracksById, likedTracks, ded
   let durationSum = 0;
 
   function keyOf(t){
-    if (dedupeRule === "track_uri") return t.track_uri || t.track_id || t.track_name || Math.random().toString(16);
-    return t.track_id || t.track_uri || t.track_name || Math.random().toString(16);
+    const primary = (dedupeRule === "track_uri")
+      ? (t.track_uri || t.track_id || null)
+      : (t.track_id || t.track_uri || null);
+    if (primary) return primary;
+
+    const fallback = [
+      t.track_name || "",
+      t.album_name || "",
+      t.artist_names || "",
+      String(t.duration_ms ?? ""),
+      String(t.popularity ?? ""),
+      t.source_type || "",
+    ].join("|");
+    return `fallback:${hashString(fallback)}`;
   }
 
   function addTrack(t){

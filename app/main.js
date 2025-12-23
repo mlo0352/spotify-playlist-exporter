@@ -277,6 +277,29 @@ function wireUi(){
     popConfetti(els.confetti);
   });
 
+  els.toggleAudioFeatures?.addEventListener("change", async () => {
+    try{
+      if (!state.playlistItemsById.size && !state.likedItems.length) return;
+      if (!els.toggleAudioFeatures.checked){
+        state.audioFeaturesByTrackId = null;
+        recomputeAndRenderInsights();
+        return;
+      }
+      if (state.audioFeaturesByTrackId) return;
+
+      setNotice("ok", "Fetching audio features (beta).");
+      const t = await getValidToken();
+      const ids = collectUniqueTrackIds();
+      const features = await getAudioFeatures(t, ids);
+      state.audioFeaturesByTrackId = new Map(features.filter(Boolean).map(f => [f.id, f]));
+      recomputeAndRenderInsights();
+      setNotice("ok", "Audio features added.");
+    }catch(e){
+      console.error(e);
+      setNotice("bad", escapeHtml(e.message || String(e)));
+    }
+  });
+
   els.btnOverlap?.addEventListener("click", () => {
     openOverlapModal();
   });
@@ -521,6 +544,20 @@ async function fetchEverything(){
     setNotice("ok", "Computing metrics…");
     recomputeAndRenderInsights();
 
+    // genres for Music DNA (best-effort)
+    try{
+      const ids = topArtistIdsForGenres(50);
+      if (ids.length){
+        setNotice("ok", "Fetching artist genres for Music DNA.");
+        const artists = await getArtists(t, ids);
+        state.artistGenresById = new Map(artists.filter(Boolean).map(a => [a.id, a.genres || []]));
+        state.topGenres = computeTopGenresFromArtists();
+        recomputeDnaOnly();
+      }
+    }catch(e){
+      console.warn("Genre fetch failed:", e);
+    }
+
     setNotice("ok", "Ready. Export whenever you want.");
     els.btnExportAll.disabled = false;
   }catch(e){
@@ -591,7 +628,13 @@ function recomputeDnaOnly(){
   });
   state.dnaSvg = renderMusicDnaSvg(state.dna, { width: 1200, height: 520 });
   els.dnaSvgWrap.innerHTML = state.dnaSvg;
-  els.dnaHint.textContent = state.audioFeaturesByTrackId ? "Audio features included. Share it, download it, print it." : "Enable Audio features (beta) and re-fetch for tempo/energy.";
+
+  const afCount = state.dna?.audio?.tracks_with_features || 0;
+  const genreCount = state.dna?.top_genres?.length || 0;
+  const parts = [];
+  parts.push(state.audioFeaturesByTrackId ? `Audio features: ${fmtInt(afCount)} tracks` : (els.toggleAudioFeatures.checked ? "Audio features: enabled (re-fetch to load)" : "Audio features: off"));
+  parts.push(genreCount ? `Genres: ${fmtInt(genreCount)}` : "Genres: fetching / click Fetch genres");
+  els.dnaHint.textContent = parts.join(" • ");
 
   els.btnDnaCopy.disabled = false;
   els.btnDnaSvg.disabled = false;
@@ -644,7 +687,7 @@ function computeTopGenresFromArtists(){
     }
   }
   return Array.from(counts.entries())
-    .sort((a,b) => b[1] - a[1])
+    .sort((a,b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0])))
     .slice(0, 12)
     .map(([genre, weight]) => ({ genre, weight }));
 }
