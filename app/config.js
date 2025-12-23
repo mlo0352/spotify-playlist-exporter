@@ -1,6 +1,13 @@
 export function computeRedirectUri(){
   // Directory URL with trailing slash, no query/hash
-  return new URL(".", window.location.href).toString();
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  if (url.pathname.endsWith("/index.html")){
+    url.pathname = url.pathname.replace(/index\.html$/,"");
+  }
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  return url.origin + url.pathname;
 }
 
 export function normalizeRedirectUri(input){
@@ -21,4 +28,3 @@ export function isDev(){
   const h = window.location.hostname;
   return h === "127.0.0.1" || h === "localhost";
 }
-
