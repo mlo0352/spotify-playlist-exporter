@@ -40,6 +40,7 @@ let token = loadToken(cfg);
 const state = {
   me: null,
   playlists: [],
+  selectedPlaylistIds: new Set(),
   playlistItemsById: new Map(),
   likedItems: [],
   metrics: null,
@@ -50,6 +51,7 @@ const state = {
   topGenres: [],
   dna: null,
   dnaSvg: "",
+  audioFeaturesLastError: null,
 };
 
 const els = {
@@ -100,11 +102,17 @@ const els = {
 
   dnaCard: document.querySelector("#dnaCard"),
   dnaSvgWrap: document.querySelector("#dnaSvgWrap"),
+  dnaSummary: document.querySelector("#dnaSummary"),
   dnaHint: document.querySelector("#dnaHint"),
   btnDnaGenres: document.querySelector("#btnDnaGenres"),
   btnDnaCopy: document.querySelector("#btnDnaCopy"),
   btnDnaSvg: document.querySelector("#btnDnaSvg"),
   btnDnaPng: document.querySelector("#btnDnaPng"),
+
+  playlistSelectionBar: document.querySelector("#playlistSelectionBar"),
+  playlistSelectionCount: document.querySelector("#playlistSelectionCount"),
+  btnSelectAllPlaylists: document.querySelector("#btnSelectAllPlaylists"),
+  btnSelectNonePlaylists: document.querySelector("#btnSelectNonePlaylists"),
 
   overlapModal: document.querySelector("#overlapModal"),
   overlapTopN: document.querySelector("#overlapTopN"),
@@ -259,6 +267,19 @@ async function init(){
 }
 
 function wireUi(){
+  els.btnSelectAllPlaylists?.addEventListener("click", () => {
+    if (!state.playlists.length) return;
+    state.selectedPlaylistIds = new Set(state.playlists.map(p => p.id));
+    updatePlaylistSelectionUi();
+    scheduleRecomputeFromSelection();
+  });
+
+  els.btnSelectNonePlaylists?.addEventListener("click", () => {
+    state.selectedPlaylistIds = new Set();
+    updatePlaylistSelectionUi();
+    scheduleRecomputeFromSelection();
+  });
+
   els.btnCopyDebug?.addEventListener("click", async () => {
     const text = els.debugLog?.value || "";
     if (!text) return;
@@ -425,7 +446,18 @@ function wireUi(){
   });
 
   els.playlistSearch.addEventListener("input", () => {
-    renderPlaylists(state.playlists, { onExportOne: exportOnePlaylist, onPersona: openPersonaModal, filterText: els.playlistSearch.value });
+    renderPlaylists(state.playlists, {
+      onExportOne: exportOnePlaylist,
+      onPersona: openPersonaModal,
+      filterText: els.playlistSearch.value,
+      selectedIds: state.selectedPlaylistIds,
+      onToggleSelected: (pl, checked) => {
+        if (checked) state.selectedPlaylistIds.add(pl.id);
+        else state.selectedPlaylistIds.delete(pl.id);
+        updatePlaylistSelectionUi();
+        scheduleRecomputeFromSelection();
+      },
+    });
   });
 
   // Cmd/Ctrl+K focuses search
@@ -556,6 +588,36 @@ function wireUi(){
   });
 }
 
+function getSelectedPlaylists(){
+  if (!state.playlists.length) return [];
+  if (!state.selectedPlaylistIds || state.selectedPlaylistIds.size === 0) return [];
+  return state.playlists.filter(p => state.selectedPlaylistIds.has(p.id));
+}
+
+function updatePlaylistSelectionUi(){
+  const total = state.playlists.length;
+  const selected = state.selectedPlaylistIds?.size || 0;
+
+  if (els.playlistSelectionCount){
+    els.playlistSelectionCount.textContent = total ? `Selected: ${fmtInt(selected)} / ${fmtInt(total)} playlists` : "Selected: -";
+  }
+  if (els.playlistSelectionBar){
+    els.playlistSelectionBar.classList.toggle("hidden", !total);
+  }
+  if (els.btnSelectAllPlaylists) els.btnSelectAllPlaylists.disabled = !total;
+  if (els.btnSelectNonePlaylists) els.btnSelectNonePlaylists.disabled = !total;
+}
+
+let recomputeTimer = null;
+function scheduleRecomputeFromSelection(){
+  if (!state.playlistItemsById?.size && !state.likedItems?.length) return;
+  if (recomputeTimer) clearTimeout(recomputeTimer);
+  recomputeTimer = setTimeout(() => {
+    recomputeTimer = null;
+    try{ recomputeAndRenderInsights(); }catch(e){ console.error(e); logError("recompute_after_selection", e); }
+  }, 250);
+}
+
 function hydrateSettingsModal(){
   els.cfgClientId.value = cfg.clientId || "";
 
@@ -674,8 +736,27 @@ async function fetchEverything(){
       playlists = partial;
     }
     state.playlists = playlists;
+    if (!state.selectedPlaylistIds || state.selectedPlaylistIds.size === 0){
+      state.selectedPlaylistIds = new Set(playlists.map(p => p.id));
+    }else{
+      // Drop selections that no longer exist
+      const valid = new Set(playlists.map(p => p.id));
+      state.selectedPlaylistIds = new Set(Array.from(state.selectedPlaylistIds).filter(id => valid.has(id)));
+    }
+    updatePlaylistSelectionUi();
 
-    renderPlaylists(state.playlists, { onExportOne: exportOnePlaylist, onPersona: openPersonaModal, filterText: els.playlistSearch.value });
+    renderPlaylists(state.playlists, {
+      onExportOne: exportOnePlaylist,
+      onPersona: openPersonaModal,
+      filterText: els.playlistSearch.value,
+      selectedIds: state.selectedPlaylistIds,
+      onToggleSelected: (pl, checked) => {
+        if (checked) state.selectedPlaylistIds.add(pl.id);
+        else state.selectedPlaylistIds.delete(pl.id);
+        updatePlaylistSelectionUi();
+        scheduleRecomputeFromSelection();
+      },
+    });
 
     setNotice("ok", `Found <b>${fmtInt(playlists.length)}</b> playlists. Now fetching tracks…`);
 
@@ -807,10 +888,13 @@ async function fetchEverything(){
 
 function collectUniqueTrackIds(){
   const ids = new Set();
-  for (const items of state.playlistItemsById.values()){
-    for (const it of items){
-      const id = it?.track?.id;
-      if (id) ids.add(id);
+  if (state.selectedPlaylistIds?.size){
+    for (const playlistId of state.selectedPlaylistIds){
+      const items = state.playlistItemsById.get(playlistId) || [];
+      for (const it of items){
+        const id = it?.track?.id;
+        if (id) ids.add(id);
+      }
     }
   }
   for (const it of state.likedItems){
@@ -822,17 +906,22 @@ function collectUniqueTrackIds(){
 
 function recomputeAndRenderInsights(){
   const includeLiked = els.toggleIncludeLiked.checked;
+  const selectedPlaylists = getSelectedPlaylists();
+  const selectedTracksById = new Map();
+  for (const pl of selectedPlaylists){
+    selectedTracksById.set(pl.id, state.playlistItemsById.get(pl.id) || []);
+  }
   state.occurrences = buildTrackOccurrences({
-    playlists: state.playlists,
-    playlistItemsById: state.playlistItemsById,
+    playlists: selectedPlaylists,
+    playlistItemsById: selectedTracksById,
     likedItems: state.likedItems,
     includeLiked,
   });
   state.artistIndexByKey = buildArtistIndex(state.occurrences);
 
   const metrics = computeMetrics({
-    playlists: state.playlists,
-    playlistTracksById: state.playlistItemsById,
+    playlists: selectedPlaylists,
+    playlistTracksById: selectedTracksById,
     likedTracks: includeLiked ? state.likedItems : [],
     dedupeRule: cfg.dedupeRule,
   });
@@ -879,6 +968,7 @@ function recomputeDnaOnly(){
   els.btnDnaSvg.disabled = false;
   els.btnDnaPng.disabled = false;
   els.btnDnaGenres.disabled = !token;
+  renderDnaSummary();
 }
 
 function hydrateSharedFingerprint(){
@@ -888,6 +978,7 @@ function hydrateSharedFingerprint(){
   state.dnaSvg = renderMusicDnaSvg(state.dna, { width: 1200, height: 520 });
   els.dnaSvgWrap.innerHTML = state.dnaSvg;
   els.dnaHint.textContent = "Shared fingerprint loaded. Connect Spotify to generate your own.";
+  renderDnaSummary();
   els.btnDnaCopy.disabled = false;
   els.btnDnaSvg.disabled = false;
   els.btnDnaPng.disabled = false;
@@ -897,11 +988,58 @@ function renderDnaEmpty(){
   state.dna = null;
   state.dnaSvg = "";
   els.dnaSvgWrap.innerHTML = "";
+  if (els.dnaSummary) els.dnaSummary.innerHTML = "";
   els.dnaHint.textContent = "Fetch your library to generate your fingerprint.";
   els.btnDnaCopy.disabled = true;
   els.btnDnaSvg.disabled = true;
   els.btnDnaPng.disabled = true;
   els.btnDnaGenres.disabled = true;
+}
+
+function renderDnaSummary(){
+  if (!els.dnaSummary) return;
+  if (!state.dna){
+    els.dnaSummary.innerHTML = "";
+    return;
+  }
+
+  const totalPlaylists = state.playlists.length;
+  const selected = state.selectedPlaylistIds?.size || 0;
+  const includeLiked = !!els.toggleIncludeLiked?.checked;
+
+  const tempo = state.dna.audio?.avg_tempo ?? null;
+  const energy = state.dna.audio?.avg_energy ?? null;
+  const mood = state.dna.audio?.avg_valence ?? null;
+  const afTracks = state.dna.audio?.tracks_with_features || 0;
+  const audioNote = afTracks
+    ? `Averages over ${fmtInt(afTracks)} unique tracks.`
+    : (els.toggleAudioFeatures?.checked
+      ? "Audio features unavailable (Spotify may block /audio-features)."
+      : "Audio features are off.");
+
+  const genres = (state.dna.top_genres || []).map(g => g.genre).filter(Boolean);
+  const decades = (state.dna.decades || []).slice().sort((a,b) => (b.count||0) - (a.count||0)).slice(0, 3);
+  const decadeText = decades.length ? decades.map(d => `${d.decade}s (${fmtInt(d.count)})`).join("  ") : "-";
+  const explicit = (state.dna.explicit_ratio === null || state.dna.explicit_ratio === undefined) ? null : Math.round(state.dna.explicit_ratio * 100);
+
+  els.dnaSummary.innerHTML = [
+    kpi("Based on", `${fmtInt(selected)} / ${fmtInt(totalPlaylists)} playlists${includeLiked ? " + Liked Songs" : ""}`, "Deselect playlists above to exclude them from insights + Export everything."),
+    kpi("Top genres", genres.length ? genres.join("  ") : "No genres yet", genres.length ? "Derived from your top artists' genre tags." : "Click Fetch genres to derive genres from artists."),
+    kpi("Explicit", explicit === null ? "N/A" : `${explicit}%`, "Share of tracks marked explicit (unknowns ignored)."),
+    kpi("Tempo", tempo === null ? "N/A" : `${Math.round(tempo)} bpm`, audioNote),
+    kpi("Energy / Mood", (energy === null || mood === null) ? "N/A" : `${Math.round(energy * 100)}%  ${Math.round(mood * 100)}%`, "Energy = intensity; Mood (valence) = positivity."),
+    kpi("Decades", decadeText, "Based on release years across tracks."),
+  ].join("");
+}
+
+function kpi(label, value, note){
+  return `
+    <div class="dnaKpi">
+      <div class="dnaLabel">${escapeHtml(label)}</div>
+      <div class="dnaValue">${escapeHtml(value)}</div>
+      <div class="dnaNote">${escapeHtml(note || "")}</div>
+    </div>
+  `;
 }
 
 function topArtistIdsForGenres(n){
@@ -1521,11 +1659,22 @@ async function exportAllZip(){
     const includeLiked = els.toggleIncludeLiked.checked;
     const includeAlbumExports = els.toggleAlbumExports.checked;
 
+    const selectedPlaylists = getSelectedPlaylists();
+    if (!selectedPlaylists.length){
+      setNotice("warn", "Select at least one playlist for Export everything.");
+      return;
+    }
+
+    const selectedTracksById = new Map();
+    for (const pl of selectedPlaylists){
+      selectedTracksById.set(pl.id, state.playlistItemsById.get(pl.id) || []);
+    }
+
     const { zip, root } = await buildZipExport({
       cfg,
       me: state.me,
-      playlists: state.playlists,
-      playlistItemsById: state.playlistItemsById,
+      playlists: selectedPlaylists,
+      playlistItemsById: selectedTracksById,
       likedItems: includeLiked ? state.likedItems : [],
       metrics: state.metrics,
       includeLiked,
@@ -1547,6 +1696,7 @@ async function exportAllZip(){
 function resetState(){
   state.me = null;
   state.playlists = [];
+  state.selectedPlaylistIds = new Set();
   state.playlistItemsById = new Map();
   state.likedItems = [];
   state.metrics = null;
@@ -1558,7 +1708,8 @@ function resetState(){
   state.dna = null;
   state.dnaSvg = "";
   renderMe(null);
-  renderPlaylists([], { onExportOne: () => {}, onPersona: () => {}, filterText: "" });
+  updatePlaylistSelectionUi();
+  renderPlaylists([], { onExportOne: () => {}, onPersona: () => {}, filterText: "", selectedIds: state.selectedPlaylistIds });
   setStats({ playlists: null, likedCount: null, total: null, unique: null });
   renderDnaEmpty();
   if (els.btnOfflineReport) els.btnOfflineReport.disabled = true;

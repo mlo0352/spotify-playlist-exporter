@@ -120,6 +120,17 @@
 
         <div id="meCard" class="meCard hidden"></div>
 
+        <div id="playlistSelectionBar" class="selectionBar hidden" aria-label="Playlist selection for analysis and export">
+          <div class="selectionLeft">
+            <div class="selectionTitle">Analyze/export selection</div>
+            <div id="playlistSelectionCount" class="mutedLine">Selected: -</div>
+          </div>
+          <div class="selectionActions">
+            <button id="btnSelectAllPlaylists" class="btn btnGhost" type="button" disabled>All</button>
+            <button id="btnSelectNonePlaylists" class="btn btnGhost" type="button" disabled>None</button>
+          </div>
+        </div>
+
         <div id="playlistList" class="playlistList">
           <div class="emptyState">
             <div class="emptyTitle">Connect Spotify to begin</div>
@@ -156,6 +167,7 @@
             </div>
           </div>
           <div id="dnaSvgWrap" class="dnaSvgWrap" aria-label="Music DNA fingerprint"></div>
+          <div id="dnaSummary" class="dnaSummary"></div>
           <div id="dnaHint" class="dnaHint">Fetch your library to generate your fingerprint.</div>
         </div>
 

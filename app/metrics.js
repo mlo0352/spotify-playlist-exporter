@@ -264,9 +264,22 @@ function inferVibe(metrics){
   const uniqRatio = metrics.unique_tracks / total;
   const artistTop = metrics.top_artists?.[0]?.count || 0;
   const focused = artistTop / total;
+  const explicitRatio = (typeof metrics.explicit_ratio === "number") ? metrics.explicit_ratio : null;
+  const localRatio = (metrics.local_track_count || 0) / total;
+  const dupeRatio = (metrics.duplicates_across_sources || 0) / total;
+  const avgPop = (typeof metrics.avg_popularity === "number") ? metrics.avg_popularity : null;
+  const decadeTop = (metrics.decade_distribution || []).reduce(
+    (best, d) => (!best || (d.count || 0) > (best.count || 0)) ? d : best,
+    null
+  );
 
+  if (dupeRatio > 0.18) return "Repeat offender: lots of overlap across playlists (aka you know what you like) ♻️";
   if (uniqRatio > 0.92) return "Explorer mode: lots of variety, minimal repeats 🌈";
+  if (explicitRatio !== null && explicitRatio > 0.55) return "After dark: explicit-heavy rotation 🖤";
+  if (localRatio > 0.25) return "Bootleg archivist: tons of local files & imports 📁";
   if (focused > 0.08) return "Deep dive: you have a few core artists on heavy rotation 🔁";
   if (total > 5000) return "Library dragon: massive hoard of tracks 🐉";
+  if (avgPop !== null && avgPop >= 70) return "Main character energy: you live near the charts 📈";
+  if (decadeTop?.decade && decadeTop.decade <= 1990) return "Time traveler: heavy classics / oldies lean ⏳";
   return "Balanced vibe: a bit of everything with healthy repeats ✨";
 }

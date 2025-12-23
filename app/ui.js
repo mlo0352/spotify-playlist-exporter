@@ -39,7 +39,11 @@ export function renderMe(me){
   `;
 }
 
-export function renderPlaylists(playlists, { onExportOne, onPersona, filterText }){
+export function renderPlaylists(playlists, opts = {}){
+  const { onExportOne, onPersona, filterText } = opts;
+  const selectedIds = opts.selectedIds || null;
+  const onToggleSelected = opts.onToggleSelected || null;
+
   const list = document.querySelector("#playlistList");
   const q = (filterText || "").toLowerCase().trim();
 
@@ -86,6 +90,26 @@ export function renderPlaylists(playlists, { onExportOne, onPersona, filterText 
         <button class="btn btnGhost" type="button" data-action="export">Export</button>
       </div>
     `;
+
+    if (selectedIds && onToggleSelected){
+      const right = row.querySelector(".plRight");
+      if (right){
+        const wrap = document.createElement("label");
+        wrap.className = "plCheckWrap";
+        wrap.title = "Include in analysis and Export everything";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = selectedIds.has(pl.id);
+        cb.addEventListener("change", () => onToggleSelected(pl, cb.checked));
+
+        const text = document.createElement("span");
+        text.textContent = "Analyze";
+
+        wrap.append(cb, text);
+        right.prepend(wrap);
+      }
+    }
     const btnExport = row.querySelector('button[data-action="export"]');
     btnExport.addEventListener("click", () => onExportOne(pl));
 
