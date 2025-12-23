@@ -111,6 +111,7 @@ const els = {
 
   playlistSelectionBar: document.querySelector("#playlistSelectionBar"),
   playlistSelectionCount: document.querySelector("#playlistSelectionCount"),
+  btnSelectMinePlaylists: document.querySelector("#btnSelectMinePlaylists"),
   btnSelectAllPlaylists: document.querySelector("#btnSelectAllPlaylists"),
   btnSelectNonePlaylists: document.querySelector("#btnSelectNonePlaylists"),
 
@@ -267,16 +268,35 @@ async function init(){
 }
 
 function wireUi(){
+  els.btnSelectMinePlaylists?.addEventListener("click", () => {
+    if (!state.playlists.length) return;
+    const meId = state.me?.id || null;
+    if (!meId){
+      setNotice("warn", "Fetch your library first so we know which playlists you own.");
+      return;
+    }
+    state.selectedPlaylistIds = new Set(
+      state.playlists
+        .filter(p => (p.owner?.id || "") === meId)
+        .map(p => p.id)
+    );
+    updatePlaylistSelectionUi();
+    rerenderPlaylistList();
+    scheduleRecomputeFromSelection();
+  });
+
   els.btnSelectAllPlaylists?.addEventListener("click", () => {
     if (!state.playlists.length) return;
     state.selectedPlaylistIds = new Set(state.playlists.map(p => p.id));
     updatePlaylistSelectionUi();
+    rerenderPlaylistList();
     scheduleRecomputeFromSelection();
   });
 
   els.btnSelectNonePlaylists?.addEventListener("click", () => {
     state.selectedPlaylistIds = new Set();
     updatePlaylistSelectionUi();
+    rerenderPlaylistList();
     scheduleRecomputeFromSelection();
   });
 
@@ -446,18 +466,7 @@ function wireUi(){
   });
 
   els.playlistSearch.addEventListener("input", () => {
-    renderPlaylists(state.playlists, {
-      onExportOne: exportOnePlaylist,
-      onPersona: openPersonaModal,
-      filterText: els.playlistSearch.value,
-      selectedIds: state.selectedPlaylistIds,
-      onToggleSelected: (pl, checked) => {
-        if (checked) state.selectedPlaylistIds.add(pl.id);
-        else state.selectedPlaylistIds.delete(pl.id);
-        updatePlaylistSelectionUi();
-        scheduleRecomputeFromSelection();
-      },
-    });
+    rerenderPlaylistList();
   });
 
   // Cmd/Ctrl+K focuses search
@@ -594,6 +603,21 @@ function getSelectedPlaylists(){
   return state.playlists.filter(p => state.selectedPlaylistIds.has(p.id));
 }
 
+function rerenderPlaylistList(){
+  renderPlaylists(state.playlists, {
+    onExportOne: exportOnePlaylist,
+    onPersona: openPersonaModal,
+    filterText: els.playlistSearch.value,
+    selectedIds: state.selectedPlaylistIds,
+    onToggleSelected: (pl, checked) => {
+      if (checked) state.selectedPlaylistIds.add(pl.id);
+      else state.selectedPlaylistIds.delete(pl.id);
+      updatePlaylistSelectionUi();
+      scheduleRecomputeFromSelection();
+    },
+  });
+}
+
 function updatePlaylistSelectionUi(){
   const total = state.playlists.length;
   const selected = state.selectedPlaylistIds?.size || 0;
@@ -604,6 +628,7 @@ function updatePlaylistSelectionUi(){
   if (els.playlistSelectionBar){
     els.playlistSelectionBar.classList.toggle("hidden", !total);
   }
+  if (els.btnSelectMinePlaylists) els.btnSelectMinePlaylists.disabled = !total || !state.me?.id;
   if (els.btnSelectAllPlaylists) els.btnSelectAllPlaylists.disabled = !total;
   if (els.btnSelectNonePlaylists) els.btnSelectNonePlaylists.disabled = !total;
 }
@@ -745,18 +770,7 @@ async function fetchEverything(){
     }
     updatePlaylistSelectionUi();
 
-    renderPlaylists(state.playlists, {
-      onExportOne: exportOnePlaylist,
-      onPersona: openPersonaModal,
-      filterText: els.playlistSearch.value,
-      selectedIds: state.selectedPlaylistIds,
-      onToggleSelected: (pl, checked) => {
-        if (checked) state.selectedPlaylistIds.add(pl.id);
-        else state.selectedPlaylistIds.delete(pl.id);
-        updatePlaylistSelectionUi();
-        scheduleRecomputeFromSelection();
-      },
-    });
+    rerenderPlaylistList();
 
     setNotice("ok", `Found <b>${fmtInt(playlists.length)}</b> playlists. Now fetching tracks…`);
 
