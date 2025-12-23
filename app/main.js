@@ -125,6 +125,11 @@ const els = {
   personaSummary: document.querySelector("#personaSummary"),
   personaBadges: document.querySelector("#personaBadges"),
   personaTraits: document.querySelector("#personaTraits"),
+
+  debugPanel: document.querySelector("#debugPanel"),
+  debugLog: document.querySelector("#debugLog"),
+  btnCopyDebug: document.querySelector("#btnCopyDebug"),
+  btnClearDebug: document.querySelector("#btnClearDebug"),
 };
 
 const uiState = {
@@ -136,6 +141,86 @@ const uiState = {
 };
 
 init();
+
+function serializeError(err){
+  const e = err || {};
+  const out = {
+    name: e.name || "Error",
+    message: e.message || String(e),
+  };
+  if (e.stack) out.stack = String(e.stack);
+  if (e.name === "SpotifyApiError" && e.info){
+    out.spotify = e.info;
+    const attempts = Array.isArray(e.info.attempts) ? e.info.attempts : [];
+    out.spotifyAttemptCount = attempts.length;
+    out.spotifyFinalStatus = (e.info.status ?? attempts[attempts.length - 1]?.status ?? null);
+  }
+  return out;
+}
+
+function appendDebugEntry(entry){
+  if (!els.debugLog) return;
+  if (els.debugPanel && entry?.level !== "info") els.debugPanel.classList.remove("hidden");
+  const line = JSON.stringify(entry);
+  els.debugLog.value = (els.debugLog.value ? (els.debugLog.value + "\n") : "") + line;
+  els.debugLog.scrollTop = els.debugLog.scrollHeight;
+}
+
+function logWarn(op, message, extra){
+  const entry = {
+    ts: new Date().toISOString(),
+    level: "warn",
+    op,
+    message: message || "",
+    ...extra,
+  };
+  appendDebugEntry(entry);
+  return entry;
+}
+
+function logError(op, err, extra){
+  const entry = {
+    ts: new Date().toISOString(),
+    level: "error",
+    op,
+    ...extra,
+    error: serializeError(err),
+  };
+  appendDebugEntry(entry);
+  return entry;
+}
+
+function getTokenScopes(t){
+  if (!t) return [];
+  if (Array.isArray(t.scope)) return t.scope.map(String);
+  const s = String(t.scope || "").trim();
+  if (!s) return [];
+  return s.split(/\s+/g).filter(Boolean);
+}
+
+function tokenHasScope(t, scope){
+  if (!scope) return true;
+  const set = new Set(getTokenScopes(t));
+  return set.has(scope);
+}
+
+function spotifyLatestBodyText(err){
+  const attempts = err?.info?.attempts;
+  if (!Array.isArray(attempts) || !attempts.length) return "";
+  for (let i = attempts.length - 1; i >= 0; i--){
+    const b = attempts[i]?.body;
+    if (typeof b === "string" && b.trim()) return b;
+  }
+  return "";
+}
+
+function isInsufficientScope403(err){
+  if (err?.name !== "SpotifyApiError") return false;
+  const status = err?.info?.status ?? null;
+  if (status !== 403) return false;
+  const body = spotifyLatestBodyText(err).toLowerCase();
+  return body.includes("insufficient client scope") || body.includes("insufficient_scope");
+}
 
 async function init(){
   wireUi();
@@ -158,6 +243,7 @@ async function init(){
       setNotice("ok", "Connected! Now fetch your playlists.");
     }catch(e){
       console.error(e);
+      logError("oauth_token_exchange", e, { redirectUri: resolveRedirectUri(cfg) });
       setNotice("bad", escapeHtml(e.message || String(e)));
     }finally{
       clearAuthParamsFromUrl();
@@ -173,6 +259,27 @@ async function init(){
 }
 
 function wireUi(){
+  els.btnCopyDebug?.addEventListener("click", async () => {
+    const text = els.debugLog?.value || "";
+    if (!text) return;
+    try{
+      await navigator.clipboard.writeText(text);
+      setNotice("ok", "Copied debug log to clipboard.");
+    }catch{
+      try{
+        els.debugLog?.focus();
+        els.debugLog?.select();
+        document.execCommand?.("copy");
+      }catch{}
+      prompt("Copy debug log:", text);
+    }
+  });
+
+  els.btnClearDebug?.addEventListener("click", () => {
+    if (els.debugLog) els.debugLog.value = "";
+    if (els.debugPanel) els.debugPanel.classList.add("hidden");
+  });
+
   els.btnSettings.addEventListener("click", () => {
     hydrateSettingsModal();
     els.settingsModal.showModal();
@@ -278,6 +385,7 @@ function wireUi(){
   });
 
   els.toggleAudioFeatures?.addEventListener("change", async () => {
+    let idsCount = null;
     try{
       if (!state.playlistItemsById.size && !state.likedItems.length) return;
       if (!els.toggleAudioFeatures.checked){
@@ -290,12 +398,21 @@ function wireUi(){
       setNotice("ok", "Fetching audio features (beta).");
       const t = await getValidToken();
       const ids = collectUniqueTrackIds();
+      idsCount = ids.length;
       const features = await getAudioFeatures(t, ids);
       state.audioFeaturesByTrackId = new Map(features.filter(Boolean).map(f => [f.id, f]));
       recomputeAndRenderInsights();
       setNotice("ok", "Audio features added.");
     }catch(e){
       console.error(e);
+      const partial = Array.isArray(e?.partialItems) ? e.partialItems : [];
+      logError("audio_features_toggle_fetch", e, { trackIds: idsCount, partialCount: partial.length });
+      if (partial.length){
+        state.audioFeaturesByTrackId = new Map(partial.filter(Boolean).map(f => [f.id, f]));
+        recomputeAndRenderInsights();
+        setNotice("warn", `Audio features partially loaded (${fmtInt(partial.length)}). See <b>Debug log</b>.`);
+        return;
+      }
       setNotice("bad", escapeHtml(e.message || String(e)));
     }
   });
@@ -425,6 +542,15 @@ function wireUi(){
       setNotice("ok", "Genres added to Music DNA.");
     }catch(e){
       console.error(e);
+      const partial = Array.isArray(e?.partialItems) ? e.partialItems : [];
+      logError("get_artist_genres_manual", e, { partialCount: partial.length });
+      if (partial.length){
+        state.artistGenresById = new Map(partial.filter(Boolean).map(a => [a.id, a.genres || []]));
+        state.topGenres = computeTopGenresFromArtists();
+        recomputeDnaOnly();
+        setNotice("warn", `Genres partially loaded (${fmtInt(partial.length)}). See <b>Debug log</b>.`);
+        return;
+      }
       setNotice("bad", escapeHtml(e.message || String(e)));
     }
   });
@@ -496,19 +622,57 @@ async function tryLoadProfile(){
     renderMe(state.me);
   }catch(e){
     console.warn("Profile load failed:", e);
+    logError("try_load_profile", e);
   }
 }
 
 async function fetchEverything(){
+  const runId = String(Date.now());
+  let errorCount = 0;
   try{
     setNotice("ok", "Fetching playlists…");
     const t = await getValidToken();
-    if (!t) throw new Error("Not authenticated.");
+    if (!t){
+      setNotice("bad", "Not authenticated.");
+      return;
+    }
 
-    state.me = await getMe(t);
-    renderMe(state.me);
+    appendDebugEntry({
+      ts: new Date().toISOString(),
+      level: "info",
+      op: "fetch_start",
+      runId,
+      includeLiked: !!els.toggleIncludeLiked?.checked,
+      includeAudioFeatures: !!els.toggleAudioFeatures?.checked,
+      tokenScopes: getTokenScopes(t),
+      clientIdLen: String(cfg.clientId || "").length,
+      redirectUri: resolveRedirectUri(cfg),
+    });
 
-    const playlists = await getAllPlaylists(t);
+    // Profile card is best-effort
+    try{
+      state.me = await getMe(t);
+      renderMe(state.me);
+    }catch(e){
+      console.warn("Profile load failed:", e);
+      errorCount++;
+      logError("get_me", e, { runId });
+    }
+
+    let playlists;
+    try{
+      playlists = await getAllPlaylists(t);
+    }catch(e){
+      console.error(e);
+      const partial = Array.isArray(e?.partialItems) ? e.partialItems : [];
+      errorCount++;
+      logError("get_all_playlists", e, { runId, partialCount: partial.length });
+      if (!partial.length){
+        setNotice("bad", `Failed to fetch playlists. See <b>Debug log</b>.`);
+        return;
+      }
+      playlists = partial;
+    }
     state.playlists = playlists;
 
     renderPlaylists(state.playlists, { onExportOne: exportOnePlaylist, onPersona: openPersonaModal, filterText: els.playlistSearch.value });
@@ -520,14 +684,51 @@ async function fetchEverything(){
     for (let i=0;i<playlists.length;i++){
       const pl = playlists[i];
       setNotice("ok", `Fetching tracks: <b>${escapeHtml(pl.name)}</b> (${i+1}/${playlists.length})…`);
-      const items = await getAllPlaylistItems(t, pl.id);
-      state.playlistItemsById.set(pl.id, items);
+      try{
+        const items = await getAllPlaylistItems(t, pl.id);
+        state.playlistItemsById.set(pl.id, items);
+      }catch(e){
+        console.error(e);
+        const partial = Array.isArray(e?.partialItems) ? e.partialItems : [];
+        errorCount++;
+        logError("get_playlist_tracks", e, { runId, playlistId: pl.id, playlistName: pl.name, index: i+1, total: playlists.length, partialCount: partial.length, partialOffset: e?.partialOffset ?? null });
+        state.playlistItemsById.set(pl.id, partial);
+      }
     }
 
     // liked songs optional
     if (els.toggleIncludeLiked.checked){
-      setNotice("ok", "Fetching Liked Songs…");
-      state.likedItems = await getAllSavedTracks(t);
+      if (!tokenHasScope(t, "user-library-read")){
+        errorCount++;
+        logWarn("skip_liked_songs_missing_scope", "Token missing user-library-read scope; skipping Liked Songs fetch.", {
+          runId,
+          requiredScope: "user-library-read",
+          tokenScopes: getTokenScopes(t),
+        });
+        els.toggleIncludeLiked.checked = false;
+        state.likedItems = [];
+      }else{
+        setNotice("ok", "Fetching Liked Songs…");
+        try{
+          state.likedItems = await getAllSavedTracks(t);
+        }catch(e){
+          console.error(e);
+          const partial = Array.isArray(e?.partialItems) ? e.partialItems : [];
+          errorCount++;
+          logError("get_liked_songs", e, { runId, tokenScopes: getTokenScopes(t), partialCount: partial.length, partialOffset: e?.partialOffset ?? null });
+          if (isInsufficientScope403(e)){
+            logWarn("liked_songs_insufficient_scope", "Spotify rejected /me/tracks due to insufficient scope; disabling Liked Songs for this run.", {
+              runId,
+              requiredScope: "user-library-read",
+              tokenScopes: getTokenScopes(t),
+            });
+            els.toggleIncludeLiked.checked = false;
+            state.likedItems = [];
+          }else{
+            state.likedItems = partial;
+          }
+        }
+      }
     }else{
       state.likedItems = [];
     }
@@ -536,13 +737,27 @@ async function fetchEverything(){
     state.audioFeaturesByTrackId = null;
     if (els.toggleAudioFeatures.checked){
       setNotice("ok", "Fetching audio features (beta)…");
-      const ids = collectUniqueTrackIds();
-      const features = await getAudioFeatures(t, ids);
-      state.audioFeaturesByTrackId = new Map(features.filter(Boolean).map(f => [f.id, f]));
+      try{
+        const ids = collectUniqueTrackIds();
+        const features = await getAudioFeatures(t, ids);
+        state.audioFeaturesByTrackId = new Map(features.filter(Boolean).map(f => [f.id, f]));
+      }catch(e){
+        console.error(e);
+        const partial = Array.isArray(e?.partialItems) ? e.partialItems : [];
+        errorCount++;
+        logError("get_audio_features", e, { runId, partialCount: partial.length });
+        state.audioFeaturesByTrackId = partial.length ? new Map(partial.filter(Boolean).map(f => [f.id, f])) : null;
+      }
     }
 
     setNotice("ok", "Computing metrics…");
-    recomputeAndRenderInsights();
+    try{
+      recomputeAndRenderInsights();
+    }catch(e){
+      console.error(e);
+      errorCount++;
+      logError("compute_metrics", e, { runId });
+    }
 
     // genres for Music DNA (best-effort)
     try{
@@ -556,12 +771,36 @@ async function fetchEverything(){
       }
     }catch(e){
       console.warn("Genre fetch failed:", e);
+      const partial = Array.isArray(e?.partialItems) ? e.partialItems : [];
+      if (partial.length){
+        state.artistGenresById = new Map(partial.filter(Boolean).map(a => [a.id, a.genres || []]));
+        state.topGenres = computeTopGenresFromArtists();
+        recomputeDnaOnly();
+      }
+      errorCount++;
+      logError("get_artist_genres", e, { runId, partialCount: partial.length });
     }
 
-    setNotice("ok", "Ready. Export whenever you want.");
+    if (errorCount){
+      setNotice("warn", `Fetched with <b>${fmtInt(errorCount)}</b> errors. See <b>Debug log</b>.`);
+    }else{
+      setNotice("ok", "Ready. Export whenever you want.");
+    }
+
+    appendDebugEntry({
+      ts: new Date().toISOString(),
+      level: "info",
+      op: "fetch_done",
+      runId,
+      errorCount,
+      includeLiked: !!els.toggleIncludeLiked?.checked,
+      likedCount: Array.isArray(state.likedItems) ? state.likedItems.length : 0,
+    });
     els.btnExportAll.disabled = false;
   }catch(e){
     console.error(e);
+    errorCount++;
+    logError("fetch_everything_unhandled", e, { runId });
     setNotice("bad", escapeHtml(e.message || String(e)));
   }
 }
@@ -896,6 +1135,7 @@ function hydratePrivacyModal(){
       const leftMin = (leftMs === null) ? null : Math.max(0, Math.round(leftMs / 60000));
       els.privacyToken.textContent = [
         `access_token present`,
+        `scopes: ${getTokenScopes(token).join(" ") || "-"}`,
         exp ? `expires: ${exp.toLocaleString()}` : `expires: unknown`,
         leftMin !== null ? `(${leftMin} min left)` : "",
         token.refresh_token ? "refresh_token present" : "no refresh_token",
@@ -1264,6 +1504,7 @@ async function exportOnePlaylist(pl){
     setNotice("ok", `Exported playlist: <b>${escapeHtml(pl.name)}</b>`);
   }catch(e){
     console.error(e);
+    logError("export_one_playlist", e, { playlistId: pl?.id, playlistName: pl?.name });
     setNotice("bad", escapeHtml(e.message || String(e)));
   }
 }
@@ -1298,6 +1539,7 @@ async function exportAllZip(){
     popConfetti(els.confetti);
   }catch(e){
     console.error(e);
+    logError("export_all_zip", e);
     setNotice("bad", escapeHtml(e.message || String(e)));
   }
 }

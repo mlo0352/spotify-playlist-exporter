@@ -139,6 +139,22 @@ body{
 
 .panelBody{padding:14px}
 
+.logBox{
+  width:100%;
+  min-height: 160px;
+  max-height: 360px;
+  padding:12px;
+  border-radius: 16px;
+  border:1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.92);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size:12px;
+  line-height:1.4;
+  resize: vertical;
+  white-space: pre;
+  overflow:auto;
+}
+
 .dnaCard{
   border:1px solid rgba(0,0,0,.06);
   border-radius: var(--radius);

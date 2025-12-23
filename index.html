@@ -30,6 +30,19 @@
   <main class="container">
     <section id="notice" class="notice hidden"></section>
 
+    <section id="debugPanel" class="panel hidden">
+      <div class="panelHeader">
+        <div class="panelTitle">Debug log</div>
+        <div class="panelActions">
+          <button id="btnCopyDebug" class="btn btnGhost" type="button">Copy</button>
+          <button id="btnClearDebug" class="btn btnGhost" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="panelBody">
+        <textarea id="debugLog" class="logBox" readonly placeholder="Errors will appear here (copy/paste this when reporting issues)."></textarea>
+      </div>
+    </section>
+
     <section class="hero">
       <div class="heroCard">
         <div class="heroTitle">
