@@ -140,26 +140,52 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
   const genresText = genresTextRaw.length > 84 ? (genresTextRaw.slice(0, 82) + "…") : genresTextRaw;
   const sig = String(dna.seed || "").slice(0, 8);
 
-  const barcodeX = pad;
-  const barcodeY = pad + 170;
-  const barcodeW = innerW;
-  const barcodeH = innerH - 170;
-
-  const bars = [];
-  const barCount = 56;
-  for (let i=0;i<barCount;i++){
-    const v = rnd();
-    const h = Math.floor(18 + v * (barcodeH - 24));
-    const x = barcodeX + (i / barCount) * barcodeW;
-    const w = Math.max(2, (barcodeW / barCount) * 0.78);
-    bars.push({ x, y: barcodeY + (barcodeH - h), w, h, v });
-  }
-
   const decadeBars = decades.slice(-8);
   const decadeW = 12;
   const decadeGap = 6;
   const decadeStartX = pad + 10;
   const decadeBaseY = pad + 136;
+  const decadesBottomY = decadeBaseY + 76;
+
+  const barcodeX = pad;
+  const barcodeW = innerW;
+  const barcodeY = Math.max(pad + 170, decadesBottomY + 18);
+  const barcodeH = Math.max(120, (pad + innerH) - barcodeY - 12);
+
+  const bars = [];
+  const barCount = 56;
+
+  const maxGenre = Math.max(1, ...(dna.top_genres || []).map(g => Number(g.weight) || 0));
+  const genreVals = (dna.top_genres || []).slice(0, 8).map(g => clamp((Number(g.weight) || 0) / maxGenre, 0, 1));
+  while (genreVals.length < 8) genreVals.push(0);
+
+  const decadeVals = decadeBars.map(d => (d.count || 0) / decadeMax);
+  while (decadeVals.length < 8) decadeVals.unshift(0);
+
+  const tempo = Number(dna.audio?.avg_tempo ?? NaN);
+  const tempo01 = Number.isFinite(tempo) ? clamp(tempo / 200, 0, 1) : 0;
+  const explicit01 = (explicit === null || explicit === undefined) ? 0 : clamp(Number(explicit), 0, 1);
+  const energy01 = energy === null ? 0 : energy;
+  const valence01 = valence === null ? 0 : valence;
+
+  const fixedVals = [
+    ...decadeVals.slice(-8),
+    ...genreVals.slice(0, 8),
+    explicit01,
+    energy01,
+    valence01,
+    tempo01,
+  ];
+  while (fixedVals.length < barCount) fixedVals.push(rnd());
+  fixedVals.length = barCount;
+
+  for (let i=0;i<barCount;i++){
+    const v = fixedVals[i] ?? 0;
+    const h = Math.floor(18 + v * (barcodeH - 24));
+    const x = barcodeX + (i / barCount) * barcodeW;
+    const w = Math.max(2, (barcodeW / barCount) * 0.78);
+    bars.push({ x, y: barcodeY + (barcodeH - h), w, h, v });
+  }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
@@ -205,7 +231,7 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
   </g>
 
   <g transform="translate(${decadeStartX},${decadeBaseY})">
-    <text x="0" y="0" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="900" fill="rgba(16,18,23,.65)">Decades</text>
+    <text x="0" y="0" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="900" fill="rgba(16,18,23,.65)">Release decades</text>
     <g transform="translate(0,12)">
       ${decadeBars.map((d, i) => {
         const h = (d.count || 0) / decadeMax * 34;
@@ -221,11 +247,13 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
     }).join("")}
   </g>
 
+  <text x="${pad}" y="${barcodeY-10}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="900" fill="rgba(16,18,23,.65)">Signature barcode</text>
   <g>
     <rect x="${barcodeX}" y="${barcodeY}" width="${barcodeW}" height="${barcodeH}" rx="18" fill="rgba(255,255,255,.82)" stroke="rgba(0,0,0,.06)"/>
     ${bars.map(b => `<rect x="${b.x + 6}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${Math.max(2, b.w/2)}" fill="url(#line)" opacity="${0.18 + b.v*0.78}"/>`).join("")}
   </g>
 
+  <text x="${pad}" y="${height-pad+4}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="11" font-weight="800" fill="rgba(16,18,23,.45)">Encodes: decades | genres | explicit | audio | hash</text>
   <text x="${width-pad}" y="${height-pad+4}" text-anchor="end" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="11" font-weight="800" fill="rgba(16,18,23,.45)">${(dna.vibe || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</text>
 </svg>`;
 }

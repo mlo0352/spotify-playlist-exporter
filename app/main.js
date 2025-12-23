@@ -962,7 +962,7 @@ function recomputeDnaOnly(){
   const parts = [];
   parts.push(state.audioFeaturesByTrackId ? `Audio features: ${fmtInt(afCount)} tracks` : (els.toggleAudioFeatures.checked ? "Audio features: enabled (re-fetch to load)" : "Audio features: off"));
   parts.push(genreCount ? `Genres: ${fmtInt(genreCount)}` : "Genres: fetching / click Fetch genres");
-  els.dnaHint.textContent = parts.join(" | ");
+  els.dnaHint.textContent = `Music DNA shows: release decades, explicit %, top genres, and (if available) audio averages. | ${parts.join(" | ")}`;
 
   els.btnDnaCopy.disabled = false;
   els.btnDnaSvg.disabled = false;
