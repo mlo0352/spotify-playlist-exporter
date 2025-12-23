@@ -140,10 +140,9 @@ export function computePlaylistPersona({
     { k: "Explicit ratio", v: explicitRatio === null ? "Unknown" : `${Math.round(explicitRatio*100)}%` },
     { k: "Uniqueness", v: uniqRatio === null ? "Unknown" : `${Math.round(uniqRatio*100)}%` },
     { k: "Era range", v: (minYear && maxYear) ? `${minYear} to ${maxYear} (span ${yearSpan}y)` : "Unknown" },
-    { k: "Top genres", v: topGenres.length ? topGenres.map(g => g.genre).join(" • ") : "Fetch genres to derive this" },
+    { k: "Top genres", v: topGenres.length ? topGenres.map(g => g.genre).join(" | ") : "Fetch genres to derive this" },
   ];
 
   const summary = `If “${name}” were a person: ${who}. ${mood}.`;
   return { summary, badges, traits };
 }
-

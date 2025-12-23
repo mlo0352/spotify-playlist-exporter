@@ -962,7 +962,7 @@ function recomputeDnaOnly(){
   const parts = [];
   parts.push(state.audioFeaturesByTrackId ? `Audio features: ${fmtInt(afCount)} tracks` : (els.toggleAudioFeatures.checked ? "Audio features: enabled (re-fetch to load)" : "Audio features: off"));
   parts.push(genreCount ? `Genres: ${fmtInt(genreCount)}` : "Genres: fetching / click Fetch genres");
-  els.dnaHint.textContent = parts.join(" • ");
+  els.dnaHint.textContent = parts.join(" | ");
 
   els.btnDnaCopy.disabled = false;
   els.btnDnaSvg.disabled = false;
@@ -1019,15 +1019,15 @@ function renderDnaSummary(){
 
   const genres = (state.dna.top_genres || []).map(g => g.genre).filter(Boolean);
   const decades = (state.dna.decades || []).slice().sort((a,b) => (b.count||0) - (a.count||0)).slice(0, 3);
-  const decadeText = decades.length ? decades.map(d => `${d.decade}s (${fmtInt(d.count)})`).join("  ") : "-";
+  const decadeText = decades.length ? decades.map(d => `${d.decade}s (${fmtInt(d.count)})`).join(" | ") : "-";
   const explicit = (state.dna.explicit_ratio === null || state.dna.explicit_ratio === undefined) ? null : Math.round(state.dna.explicit_ratio * 100);
 
   els.dnaSummary.innerHTML = [
     kpi("Based on", `${fmtInt(selected)} / ${fmtInt(totalPlaylists)} playlists${includeLiked ? " + Liked Songs" : ""}`, "Deselect playlists above to exclude them from insights + Export everything."),
-    kpi("Top genres", genres.length ? genres.join("  ") : "No genres yet", genres.length ? "Derived from your top artists' genre tags." : "Click Fetch genres to derive genres from artists."),
+    kpi("Top genres", genres.length ? genres.join(" | ") : "No genres yet", genres.length ? "Derived from your top artists' genre tags." : "Click Fetch genres to derive genres from artists."),
     kpi("Explicit", explicit === null ? "N/A" : `${explicit}%`, "Share of tracks marked explicit (unknowns ignored)."),
     kpi("Tempo", tempo === null ? "N/A" : `${Math.round(tempo)} bpm`, audioNote),
-    kpi("Energy / Mood", (energy === null || mood === null) ? "N/A" : `${Math.round(energy * 100)}%  ${Math.round(mood * 100)}%`, "Energy = intensity; Mood (valence) = positivity."),
+    kpi("Energy / Mood", (energy === null || mood === null) ? "N/A" : `${Math.round(energy * 100)}% | ${Math.round(mood * 100)}%`, "Energy = intensity; Mood (valence) = positivity."),
     kpi("Decades", decadeText, "Based on release years across tracks."),
   ].join("");
 }
@@ -1116,7 +1116,7 @@ function renderArtistModal(){
   }
 
   els.artistModalTitle.textContent = detail.name;
-  els.artistModalSummary.textContent = `${fmtInt(detail.count)} track occurrences  ${fmtInt(detail.playlists.length)} playlists`;
+  els.artistModalSummary.textContent = `${fmtInt(detail.count)} track occurrences | ${fmtInt(detail.playlists.length)} playlists`;
 
   const mode = uiState.artist.mode;
   els.artistModePlaylists.classList.toggle("isActive", mode === "playlists");
@@ -1141,7 +1141,7 @@ function renderArtistModal(){
         <div class="rowCard">
           <div class="rowTop">
             <div class="rowTitle">${escapeHtml(t.track_name)}</div>
-            <div class="rowMeta"><b>${fmtInt(t.count)}</b>  in ${fmtInt(pls.length)} playlists</div>
+            <div class="rowMeta"><b>${fmtInt(t.count)}</b> | in ${fmtInt(pls.length)} playlists</div>
           </div>
           <div class="rowSub">${escapeHtml(t.album_name || "")}</div>
           <div class="rowSub small">${plText}</div>
@@ -1178,7 +1178,7 @@ function renderArtistModal(){
       <details class="detailBlock" ${idx < 1 ? "open" : ""}>
         <summary>
           <span class="sumLeft">${escapeHtml(p.playlist_name)}</span>
-          <span class="sumRight">${fmtInt(p.count)}  ${fmtInt(tracks.length)} songs</span>
+          <span class="sumRight">${fmtInt(p.count)} | ${fmtInt(tracks.length)} songs</span>
         </summary>
         <ol class="miniList">
           ${shownTracks.map(t => `<li>${escapeHtml(t.track_name)} <span class="small">(${fmtInt(t.count)})</span></li>`).join("")}
@@ -1277,7 +1277,7 @@ function hydratePrivacyModal(){
         exp ? `expires: ${exp.toLocaleString()}` : `expires: unknown`,
         leftMin !== null ? `(${leftMin} min left)` : "",
         token.refresh_token ? "refresh_token present" : "no refresh_token",
-      ].filter(Boolean).join("  ");
+      ].filter(Boolean).join(" | ");
     }
   }
 
@@ -1479,7 +1479,7 @@ function renderOverlapDetail(i, j){
   const b = uiState.overlap.playlistMeta[j];
   if (!a || !b) return;
   if (i === j){
-    els.overlapDetail.innerHTML = `<div class="mutedLine"><b>${escapeHtml(a.name)}</b>  ${fmtInt(a.track_count)} tracks</div>`;
+    els.overlapDetail.innerHTML = `<div class="mutedLine"><b>${escapeHtml(a.name)}</b> | ${fmtInt(a.track_count)} tracks</div>`;
     return;
   }
   const keys = computeOverlapKeys(a.id, b.id, uiState.overlap.setsByPlaylistId);
@@ -1539,8 +1539,8 @@ function renderDuplicatesModal(){
     els.dupeList.innerHTML = groups.slice(0, 120).map(g => `
       <div class="rowCard">
         <div class="rowTop">
-          <div class="rowTitle">${escapeHtml(g.artist)}  ${escapeHtml(g.canonical)}</div>
-          <div class="rowMeta">${fmtInt(g.variantCount)} variants  ${fmtInt(g.playlistCount)} playlists</div>
+          <div class="rowTitle">${escapeHtml(g.artist)} | ${escapeHtml(g.canonical)}</div>
+          <div class="rowMeta">${fmtInt(g.variantCount)} variants | ${fmtInt(g.playlistCount)} playlists</div>
         </div>
         <ol class="miniList">
           ${g.variants.slice(0, 6).map(v => `<li>${escapeHtml(v.track_name)} <span class="small">(${fmtInt(v.playlistIds.length)} playlists)</span></li>`).join("")}

@@ -28,7 +28,7 @@ export function renderMe(me){
       <div class="avatar">${img ? `<img alt="" src="${img}"/>` : ""}</div>
       <div>
         <div class="meName">${escapeHtml(me.display_name || me.id || "Unknown")}</div>
-        <div class="meMeta">${escapeHtml(me.email || "")}${followers !== null ? ` • ${fmtInt(followers)} followers` : ""}</div>
+        <div class="meMeta">${escapeHtml(me.email || "")}${followers !== null ? ` | ${fmtInt(followers)} followers` : ""}</div>
       </div>
     </div>
     <div class="meRight">
@@ -74,14 +74,14 @@ export function renderPlaylists(playlists, opts = {}){
     const flags = [
       pl.public ? "public" : "private",
       pl.collaborative ? "collab" : null
-    ].filter(Boolean).join(" • ");
+    ].filter(Boolean).join(" | ");
 
     row.innerHTML = `
       <div class="plLeft">
         <div class="plImg">${img ? `<img alt="" src="${img}">` : ""}</div>
         <div class="plMain">
           <div class="plName" title="${escapeAttr(pl.name)}">${escapeHtml(pl.name)}</div>
-          <div class="plSub">${escapeHtml(owner)} • ${fmtInt(count)} tracks • ${escapeHtml(flags || "")}</div>
+          <div class="plSub">${escapeHtml(owner)} | ${fmtInt(count)} tracks | ${escapeHtml(flags || "")}</div>
         </div>
       </div>
       <div class="plRight">
@@ -150,9 +150,9 @@ export function renderInsights(metrics){
       li(`Explicit ratio: <b>${fmtPct(metrics.explicit_ratio)}</b> <span class="small">(known: ${fmtInt(metrics.explicit_known)})</span>`),
       li(`Total duration: <b>${fmtDuration(metrics.total_duration_ms)}</b>`),
       li(`Avg track duration: <b>${fmtDuration(metrics.avg_duration_ms)}</b>`),
-      li(`Unique artists: <b>${fmtInt(metrics.unique_artist_count)}</b>  Unique albums: <b>${fmtInt(metrics.unique_album_count)}</b>`),
-      li(`Playlists: <b>${fmtInt(metrics.playlists_public_count)}</b> public  <b>${fmtInt(metrics.playlists_private_count)}</b> private  <b>${fmtInt(metrics.playlists_collaborative_count)}</b> collab`),
-      li(`First added: <b>${escapeHtml(fmtDate(metrics.first_added_at) || "-")}</b>  Last added: <b>${escapeHtml(fmtDate(metrics.last_added_at) || "-")}</b>`),
+      li(`Unique artists: <b>${fmtInt(metrics.unique_artist_count)}</b> | Unique albums: <b>${fmtInt(metrics.unique_album_count)}</b>`),
+      li(`Playlists: <b>${fmtInt(metrics.playlists_public_count)}</b> public | <b>${fmtInt(metrics.playlists_private_count)}</b> private | <b>${fmtInt(metrics.playlists_collaborative_count)}</b> collab`),
+      li(`First added: <b>${escapeHtml(fmtDate(metrics.first_added_at) || "-")}</b> | Last added: <b>${escapeHtml(fmtDate(metrics.last_added_at) || "-")}</b>`),
       li(`Top decade: <b>${topDecade ? `${topDecade.decade}s (${fmtInt(topDecade.count)})` : "-"}</b>`),
     ].join("");
   }

@@ -195,7 +195,7 @@ function buildReportHtml(cfg, me, metrics){
 <body><div class="wrap">
   <div class="hero">
     <h1>Spotify Export Report</h1>
-    <div class="sub">${esc(me.display_name || me.id || "Unknown user")} • generated ${esc(metrics.generated_at)}</div>
+    <div class="sub">${esc(me.display_name || me.id || "Unknown user")} | generated ${esc(metrics.generated_at)}</div>
   </div>
 
   <div class="grid">
@@ -260,7 +260,7 @@ export function buildOfflineReportHtml({ cfg, me, metrics }){
 <body><div class="wrap">
   <div class="hero">
     <h1>Spotify Offline Report</h1>
-    <div class="sub"><b>${esc(me?.display_name || me?.id || "Unknown user")}</b>  generated <span id="gen"></span></div>
+    <div class="sub"><b>${esc(me?.display_name || me?.id || "Unknown user")}</b> | generated <span id="gen"></span></div>
     <div class="sub muted" style="margin-top:6px">Self-contained HTML: no network required to view.</div>
   </div>
 
@@ -354,7 +354,7 @@ export function buildOfflineReportHtml({ cfg, me, metrics }){
     const pls = (m.playlists || []).slice().sort((a,b) => (b.track_count||0)-(a.track_count||0));
     const tbody = document.querySelector('#pl_table tbody');
     tbody.innerHTML = pls.slice(0, 120).map(p => {
-      const flags = [(p.public ? 'public' : 'private'), (p.collaborative ? 'collab' : '')].filter(Boolean).join('  ');
+      const flags = [(p.public ? 'public' : 'private'), (p.collaborative ? 'collab' : '')].filter(Boolean).join(' | ');
       return '<tr><td>'+esc(p.name)+'</td><td class=\"muted\">'+esc(p.owner||'')+'</td><td>'+fmtInt(p.track_count)+'</td><td class=\"muted\">'+esc(flags)+'</td></tr>';
     }).join('');
 

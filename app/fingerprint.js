@@ -136,7 +136,7 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
   const energy = pct01(dna.audio?.avg_energy ?? null);
   const valence = pct01(dna.audio?.avg_valence ?? null);
 
-  const genresTextRaw = genres.length ? genres.join(" • ") : "No genres yet";
+  const genresTextRaw = genres.length ? genres.join(" | ") : "No genres yet";
   const genresText = genresTextRaw.length > 84 ? (genresTextRaw.slice(0, 82) + "…") : genresTextRaw;
   const sig = String(dna.seed || "").slice(0, 8);
 
@@ -182,7 +182,7 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
   <rect x="8" y="8" width="${width-16}" height="${height-16}" rx="26" fill="url(#g)" opacity=".12"/>
 
   <text x="${pad}" y="${pad+28}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="20" font-weight="900" fill="rgba(10,12,18,.92)">Music DNA</text>
-  <text x="${pad}" y="${pad+50}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="700" fill="rgba(16,18,23,.55)">fingerprint v${dna.v}${sig ? ` • ${sig}` : ""} • ${dna.unique_tracks} unique</text>
+  <text x="${pad}" y="${pad+50}" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="700" fill="rgba(16,18,23,.55)">fingerprint v${dna.v}${sig ? ` | ${sig}` : ""} | ${dna.unique_tracks} unique</text>
 
   <g transform="translate(${pad},${pad+74})">
     <text x="0" y="0" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="900" fill="rgba(16,18,23,.65)">Top genres</text>
@@ -201,7 +201,7 @@ export function renderMusicDnaSvg(dna, { width = 960, height = 420 } = {}){
 
   <g transform="translate(${pad+420},${pad+110})">
     <text x="0" y="0" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="12" font-weight="900" fill="rgba(16,18,23,.65)">Energy / Mood</text>
-    <text x="0" y="20" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="14" font-weight="900" fill="rgba(10,12,18,.92)">${energy === null ? "-" : `${Math.round(energy*100)}%`} energy  •  ${valence === null ? "-" : `${Math.round(valence*100)}%`} mood</text>
+    <text x="0" y="20" font-family="system-ui,-apple-system,Segoe UI,Roboto,Arial" font-size="14" font-weight="900" fill="rgba(10,12,18,.92)">${energy === null ? "-" : `${Math.round(energy*100)}%`} energy  |  ${valence === null ? "-" : `${Math.round(valence*100)}%`} mood</text>
   </g>
 
   <g transform="translate(${decadeStartX},${decadeBaseY})">
