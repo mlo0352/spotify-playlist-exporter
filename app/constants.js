@@ -5,7 +5,8 @@ export const APP = {
 
 export const DEFAULT_CONFIG = {
   clientId: "",
-  redirectUri: "",
+  redirectUriMode: "auto",      // auto | override
+  redirectUriOverride: "",
   exportPrefix: "spotify-export",
   dedupeRule: "track_id", // track_id | track_uri
   tokenStorage: "local",  // local | session

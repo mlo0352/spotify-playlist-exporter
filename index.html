@@ -215,6 +215,11 @@
           <label class="label">Redirect URI</label>
           <input id="cfgRedirectUri" class="input" placeholder="e.g., https://splaylists.arealmiown.com/" />
           <div class="help">Must match exactly a Redirect URI in the Spotify Developer Dashboard.</div>
+          <label class="toggle" style="margin-top:10px">
+            <input id="cfgOverrideRedirectUri" type="checkbox" />
+            <span>Override redirect URI (advanced)</span>
+          </label>
+          <div class="help">Default is Auto (recommended): uses the site URL with trailing slash.</div>
         </div>
 
         <div class="field">

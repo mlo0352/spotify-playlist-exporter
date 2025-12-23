@@ -8,7 +8,16 @@ export function loadConfig(){
     const raw = localStorage.getItem(KEY_CFG);
     if (!raw) return { ...DEFAULT_CONFIG };
     const cfg = JSON.parse(raw);
-    return { ...DEFAULT_CONFIG, ...cfg };
+
+    // Migration: old configs stored redirectUri directly; new default is auto unless user explicitly overrides.
+    const merged = { ...DEFAULT_CONFIG, ...cfg };
+    if (!("redirectUriMode" in cfg)){
+      merged.redirectUriMode = "auto";
+    }
+    if ((!merged.redirectUriOverride || merged.redirectUriOverride.trim() === "") && typeof cfg.redirectUri === "string" && cfg.redirectUri.trim()){
+      merged.redirectUriOverride = cfg.redirectUri.trim();
+    }
+    return merged;
   }catch{
     return { ...DEFAULT_CONFIG };
   }

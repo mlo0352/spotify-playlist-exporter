@@ -11,6 +11,7 @@ import { buildZipExport, buildOfflineReportHtml } from "./exporters.js";
 import { buildTrackOccurrences, buildArtistIndex, getArtistDetail, buildPlaylistKeySets, computeOverlapMatrix, computeOverlapKeys, findExactDuplicateGroups, findNearDuplicateGroups } from "./insights.js";
 import { computeMusicDna, renderMusicDnaSvg, getMusicDnaFromHash, makeMusicDnaShareUrl } from "./fingerprint.js";
 import { computePlaylistPersona } from "./persona.js";
+import { computeRedirectUri, resolveRedirectUri, isDev } from "./config.js";
 
 let cfg = loadConfig();
 
@@ -26,8 +27,10 @@ function applyInjectedConfig(){
   if (isUnset(cfg.clientId) && !isUnset(injected.spotifyClientId)){
     cfg.clientId = String(injected.spotifyClientId).trim();
   }
-  if (isUnset(cfg.redirectUri) && !isUnset(injected.redirectUri)){
-    cfg.redirectUri = String(injected.redirectUri).trim();
+
+  // Redirect URI is deterministic in auto mode; only apply injected value as an override default.
+  if (cfg.redirectUriMode === "override" && isUnset(cfg.redirectUriOverride) && !isUnset(injected.redirectUri)){
+    cfg.redirectUriOverride = String(injected.redirectUri).trim();
   }
 }
 
@@ -72,6 +75,7 @@ const els = {
   cfgClientId: document.querySelector("#cfgClientId"),
   cfgInjectedBadge: document.querySelector("#cfgInjectedBadge"),
   cfgRedirectUri: document.querySelector("#cfgRedirectUri"),
+  cfgOverrideRedirectUri: document.querySelector("#cfgOverrideRedirectUri"),
   cfgPrefix: document.querySelector("#cfgPrefix"),
   cfgDedupe: document.querySelector("#cfgDedupe"),
   cfgUseSessionStorage: document.querySelector("#cfgUseSessionStorage"),
@@ -145,8 +149,10 @@ async function init(){
     clearAuthParamsFromUrl();
   }else if (cb.code){
     try{
-      if (!cfg.clientId || !cfg.redirectUri) throw new Error("Missing Client ID or Redirect URI in settings.");
-      const newToken = await exchangeCodeForToken({ clientId: cfg.clientId, redirectUri: cfg.redirectUri, code: cb.code });
+      if (!cfg.clientId) throw new Error("Missing Client ID in settings.");
+      const redirectUri = resolveRedirectUri(cfg);
+      if (isDev()) console.info("[spe] redirect_uri (token exchange):", redirectUri);
+      const newToken = await exchangeCodeForToken({ clientId: cfg.clientId, redirectUri, code: cb.code });
       token = newToken;
       saveToken(cfg, token);
       setNotice("ok", "Connected! Now fetch your playlists.");
@@ -200,19 +206,27 @@ function wireUi(){
   });
 
   els.btnConnect.addEventListener("click", async () => {
-    if (!cfg.clientId || !cfg.redirectUri){
-      setNotice("warn", "Open <b>Settings</b> and set your Spotify Client ID + Redirect URI first.");
+    if (!cfg.clientId){
+      setNotice("warn", "Open <b>Settings</b> and set your Spotify Client ID first.");
       els.settingsModal.showModal();
       return;
     }
-    const url = await buildAuthUrl({ clientId: cfg.clientId, redirectUri: cfg.redirectUri });
+    const redirectUri = resolveRedirectUri(cfg);
+    if (isDev()) console.info("[spe] redirect_uri (authorize):", redirectUri);
+    const url = await buildAuthUrl({ clientId: cfg.clientId, redirectUri });
     window.location.href = url;
   });
 
   els.btnSaveSettings.addEventListener("click", (e) => {
     // dialog form submit handles closing
     cfg.clientId = els.cfgClientId.value.trim();
-    cfg.redirectUri = els.cfgRedirectUri.value.trim();
+
+    const override = !!els.cfgOverrideRedirectUri?.checked;
+    cfg.redirectUriMode = override ? "override" : "auto";
+    if (override){
+      cfg.redirectUriOverride = els.cfgRedirectUri.value.trim();
+    }
+
     cfg.exportPrefix = els.cfgPrefix.value.trim() || "spotify-export";
     cfg.dedupeRule = els.cfgDedupe.value;
     cfg.tokenStorage = els.cfgUseSessionStorage.checked ? "session" : "local";
@@ -231,6 +245,16 @@ function wireUi(){
 
     setNotice("ok", "Settings saved.");
     hydrateSettingsModal();
+  });
+
+  els.cfgOverrideRedirectUri?.addEventListener("change", () => {
+    // live preview in modal; actual save happens on Save
+    const override = !!els.cfgOverrideRedirectUri.checked;
+    els.cfgRedirectUri.readOnly = !override;
+    els.cfgRedirectUri.setAttribute("aria-readonly", (!override).toString());
+    if (!override){
+      els.cfgRedirectUri.value = computeRedirectUri();
+    }
   });
 
   els.btnFetch.addEventListener("click", async () => {
@@ -385,7 +409,16 @@ function wireUi(){
 
 function hydrateSettingsModal(){
   els.cfgClientId.value = cfg.clientId || "";
-  els.cfgRedirectUri.value = cfg.redirectUri || guessRedirectUri();
+
+  const override = cfg.redirectUriMode === "override";
+  if (els.cfgOverrideRedirectUri) els.cfgOverrideRedirectUri.checked = override;
+
+  const autoUri = computeRedirectUri();
+  els.cfgRedirectUri.value = override ? (cfg.redirectUriOverride || "") : autoUri;
+  els.cfgRedirectUri.readOnly = !override;
+  els.cfgRedirectUri.setAttribute("aria-readonly", (!override).toString());
+  els.cfgRedirectUri.placeholder = override ? "e.g., https://example.com/callback" : autoUri;
+
   els.cfgPrefix.value = cfg.exportPrefix || "spotify-export";
   els.cfgDedupe.value = cfg.dedupeRule || "track_id";
   els.cfgUseSessionStorage.checked = cfg.tokenStorage === "session";
